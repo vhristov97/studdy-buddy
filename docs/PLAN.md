@@ -89,7 +89,7 @@ Dependencies: M0 → M1 → M2 → M3, then M4 ∥ M7 (M5 can start once the M4 
 
 ### M0: Scaffold
 - [x] M0.1 Workspaces, TS config (`moduleResolution: bundler`), ESLint + Prettier, Vitest, root scripts (`dev`, `build`, `lint`, `typecheck`, `test`), `.env.example`, `.gitignore` (`data/`, `.env`).
-- [ ] M0.2 Fastify server skeleton with a health route, and a Drizzle + SQLite setup with migrations (`db:generate`, `db:migrate`).
+- [x] M0.2 Fastify server skeleton with a health route, and a Drizzle + SQLite setup with migrations (`db:generate`, `db:migrate`).
 - [ ] M0.3 React + Vite app skeleton with a router, light/dark theme tokens and a dev proxy to the API.
 
 ### M1: Agent infrastructure

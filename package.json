@@ -17,7 +17,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "db:generate": "npm run db:generate -w @studdy/server",
+    "db:migrate": "npm run db:migrate -w @studdy/server"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
