@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@fastify/static": "10.1.8",
     "@studdy/shared": "*",
     "better-sqlite3": "13.0.3",
     "drizzle-orm": "0.45.4",

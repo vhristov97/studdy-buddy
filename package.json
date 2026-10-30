@@ -10,7 +10,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "npm run dev --workspaces --if-present",
+    "dev": "concurrently --kill-others-on-fail --names server,web --prefix-colors cyan,magenta \"npm run dev -w @studdy/server\" \"npm run dev -w @studdy/web\"",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "eslint .",
@@ -19,13 +19,17 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:generate": "npm run db:generate -w @studdy/server",
-    "db:migrate": "npm run db:migrate -w @studdy/server"
+    "db:migrate": "npm run db:migrate -w @studdy/server",
+    "start": "npm run build && npm run start -w @studdy/server"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@types/node": "26.6.6",
+    "concurrently": "10.0.6",
     "eslint": "10.14.0",
     "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.13.0",
     "prettier": "3.9.10",
     "typescript": "6.0.3",
     "typescript-eslint": "8.72.1",
