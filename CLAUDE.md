@@ -4,7 +4,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-Greenfield, in planning. `docs/PLAN.md` holds the architecture and the milestone/task list; keep its checkboxes current. When M0 lands, replace this note with the real commands (install, dev, build, lint, typecheck, test, single test).
+PoC in progress. `docs/PLAN.md` holds the architecture and the milestone/task list; keep its checkboxes current.
+
+## Commands
+
+```bash
+npm install
+npm run dev            # server (tsx watch, :3000) + web (Vite, :5173, proxies /api) together
+npm start              # build web, then serve it from Fastify on :3000
+npm run typecheck      # tsc --noEmit in every workspace
+npm run lint           # eslint .
+npm run format         # prettier --write . (format:check in CI-style checks)
+npm test               # all Vitest projects (apps/*, packages/*)
+npx vitest run apps/server/src/routes/health.test.ts   # single file
+npx vitest run -t "<test name>"                         # single test by name
+npm run db:generate    # drizzle-kit migration from apps/server/src/db/schema.ts
+npm run db:migrate     # apply migrations (also applied at server startup)
+```
+
+Config comes from the repo-root `.env` (see `.env.example`); `DATA_DIR` (default `./data`, git-ignored) holds `app.sqlite` and uploads. `samples/` holds private course material for real-API quality checks and is git-ignored.
 
 **Stack**: TypeScript everywhere, npm workspaces (`apps/server`, `apps/web`, `packages/shared`). Server: Fastify + Mozaik + Drizzle on SQLite (`better-sqlite3`); uploads stored on disk content-addressed by sha256, everything else in the DB. Web: React + Vite. Tests: Vitest. Local-only app, no deployment.
 
