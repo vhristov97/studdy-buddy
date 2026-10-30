@@ -38,4 +38,10 @@ describe("apiGet", () => {
     expect(headers.get("X-Test")).toBe("b");
     expect(headers.get("Accept")).toBe("application/json");
   });
+
+  it("preserves a caller-supplied Accept header", async () => {
+    const fetchMock = stubFetch();
+    await apiGet("/api/x", { headers: { accept: "application/vnd.example+json" } });
+    expect(sentHeaders(fetchMock).get("Accept")).toBe("application/vnd.example+json");
+  });
 });

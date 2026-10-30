@@ -2,7 +2,8 @@ node_modules/
 dist/
 coverage/
 data/
-.env
+.env*
+!.env.example
 *.log
 
 # Private course material: ignore everything in samples/ except placeholders and the README
