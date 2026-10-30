@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+data/
+.env
+*.log
+
+# Private course material: ignore everything in samples/ except placeholders and the README
+samples/**
+!samples/
+!samples/**/
+!samples/**/.gitkeep
+!samples/README.md

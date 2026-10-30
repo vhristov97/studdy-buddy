@@ -88,7 +88,7 @@ Agent instructions live as Markdown files in `apps/server/src/agents/prompts/`, 
 Dependencies: M0 → M1 → M2 → M3, then M4 ∥ M7 (M5 can start once the M4 quiz schema exists) → M6 → M8 → M9.
 
 ### M0: Scaffold
-- [ ] M0.1 Workspaces, TS config (`moduleResolution: bundler`), ESLint + Prettier, Vitest, root scripts (`dev`, `build`, `lint`, `typecheck`, `test`), `.env.example`, `.gitignore` (`data/`, `.env`).
+- [x] M0.1 Workspaces, TS config (`moduleResolution: bundler`), ESLint + Prettier, Vitest, root scripts (`dev`, `build`, `lint`, `typecheck`, `test`), `.env.example`, `.gitignore` (`data/`, `.env`).
 - [ ] M0.2 Fastify server skeleton with a health route, and a Drizzle + SQLite setup with migrations (`db:generate`, `db:migrate`).
 - [ ] M0.3 React + Vite app skeleton with a router, light/dark theme tokens and a dev proxy to the API.
 

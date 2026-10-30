@@ -19,6 +19,7 @@ Greenfield, in planning. `docs/PLAN.md` holds the architecture and the milestone
 - **Sonnet subagents implement**: delegate each implementation task with the Agent tool using `model: "sonnet"`. Give each subagent a self-contained brief (files, interfaces, acceptance criteria), since it starts without this conversation's context.
 - **Opus verifies** each result (read the diff, run build/tests, check against the plan and spec).
 - **Fix loop, max 3 cycles**: if verification fails, Opus diagnoses the problem and sends Sonnet concrete fix instructions; Sonnet fixes; Opus re-verifies. After the 3rd failed cycle, stop and report it in chat so the user can look into it, summarizing what was tried and what still fails.
+- **Git**: one feature branch per milestone (e.g. `m0-scaffold`, `m1-agents`). Commit after each task passes verification, one commit per task. Subagents never commit; Opus does after verifying.
 
 ## Product flow
 
