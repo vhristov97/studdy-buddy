@@ -62,6 +62,21 @@ describe("web app serving", () => {
       expect(res.body).toBe(INDEX_HTML);
     });
 
+    it.each(["/assets/index-oldhash.js", "/favicon.ico", "/missing.css"])(
+      "returns 404 (not index.html) for missing file %s",
+      async (url) => {
+        const res = await build(dist).inject({ method: "GET", url });
+        expect(res.statusCode).toBe(404);
+        expect(res.body).not.toBe(INDEX_HTML);
+      },
+    );
+
+    it("falls back to index.html for client routes like /kursevi/1", async () => {
+      const res = await build(dist).inject({ method: "GET", url: "/kursevi/1" });
+      expect(res.statusCode).toBe(200);
+      expect(res.body).toBe(INDEX_HTML);
+    });
+
     it("returns a JSON 404 for unknown /api routes", async () => {
       const res = await build(dist).inject({ method: "GET", url: "/api/nope" });
       expect(res.statusCode).toBe(404);

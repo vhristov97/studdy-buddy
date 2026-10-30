@@ -31,11 +31,12 @@ export function buildApp({
   if (fs.existsSync(path.join(webRoot, "index.html"))) {
     app.register(fastifyStatic, { root: webRoot });
     app.setNotFoundHandler((request, reply) => {
-      const isApi =
-        request.url === "/api" ||
-        request.url.startsWith("/api/") ||
-        request.url.startsWith("/api?");
-      if (request.method === "GET" && !isApi) {
+      const pathname = request.url.split("?")[0] ?? "";
+      const isApi = pathname === "/api" || pathname.startsWith("/api/");
+      // Only navigation requests (no file extension in the last segment) get the SPA shell;
+      // missing assets such as /assets/index-oldhash.js must stay 404s.
+      const isNavigation = !path.extname(pathname);
+      if ((request.method === "GET" || request.method === "HEAD") && !isApi && isNavigation) {
         return reply.type("text/html; charset=utf-8").sendFile("index.html");
       }
       return reply.code(404).send({
