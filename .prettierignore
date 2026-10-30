@@ -1,0 +1,12 @@
+dist
+node_modules
+data
+coverage
+samples
+package-lock.json
+samples/**/*.md
+APP-SPEC.md
+CLAUDE.md
+docs/PLAN.md
+README.md
+apps/server/drizzle
