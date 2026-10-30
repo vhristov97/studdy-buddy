@@ -49,11 +49,11 @@ Facts verified in the 4.1.0 package source, which shape the design:
 - An agent's `instruction` becomes the first item of its memory context, and the context **accumulates across `runLoop` calls**. So: **create a fresh agent per job stage** (fresh context), run it, then `leave()` it. Review-fix cycles reuse the same builder agent on purpose, so it keeps the conversation history.
 - `runLoop` is fire-and-forget, and **a failing loop emits no event**: an API error rejects an unawaited promise. Tool errors are caught and fed back to the model as text.
 - `initializeRuntime({ inferenceRunnerConfig: { runner } })` accepts a custom `InferenceRunner`. We use this twice:
-  1. **`ResilientRunner`** wraps `DefaultInferenceRunner(supportedModels, new InferenceInputValidator())`. It retries transient errors (429/5xx/network) with backoff. On final failure it publishes `stage.failed` with `{ contextId: input.context.id, error }` and rethrows. The coordinator maps context id to job stage.
+  1. **`ResilientRunner`** wraps Mozaik's default runner. `InferenceInputValidator` isn't exported, so the default runner is obtained from a throwaway second `defineRuntime()` initialized without a runner (`getInferenceRunner()`). It retries transient errors (429/5xx/529/network) with backoff. On final failure it publishes `stage.failed` with `{ contextId: input.context.id, error }` and **does not rethrow**: it returns a placeholder `ModelMessageItem`, so the loop ends cleanly instead of leaving an unhandled rejection. The stage helper ignores the placeholder answer because `stage.failed` arrives first.
   2. **`FakeRunner`** for tests: returns scripted `InferenceOutput`s, so the whole pipeline is testable without API calls.
-- A process-level `unhandledRejection` handler logs (it must not crash the server). A per-stage watchdog timeout marks stuck stages failed.
+- A process-level `unhandledRejection` handler logs, as a safety net only (it must not crash the server). A per-stage watchdog timeout marks stuck stages failed.
 - Structured output: `runLoop(..., { structuredOutput: { name, schema, strict: true } })`. The answer arrives as JSON text in `model.answer`. Schemas are Zod in `packages/shared`, converted with `z.toJSONSchema()`, and the result is **always re-validated with Zod** before persisting.
-- Telemetry: `@mozaik-ai/core` bundles `@mozaik-ai/cloud-sdk`, which ships **every event, including full agent memory** (study materials), to app.jigjoy.ai **if** `MOZAIK_API_KEY`/`MOZAIK_PROJECT_KEY` is set or `~/.mozaik/credentials.json` exists. Neither is present now. Never set them. The server should log a warning at startup if one appears.
+- Telemetry: `@mozaik-ai/core` bundles `@mozaik-ai/cloud-sdk`, which ships **every event, including full agent memory** (study materials), to app.jigjoy.ai **if** `MOZAIK_API_KEY`/`MOZAIK_PROJECT_KEY` is set or `~/.mozaik/credentials.json` exists. Neither is present now. Never set them. **Hard guard:** agent-runtime init refuses to start if `MOZAIK_API_KEY`/`MOZAIK_PROJECT_KEY` is set (process env or a `.env` in the cwd, which the SDK also reads), and points `MOZAIK_CREDENTIALS_FILE` at a nonexistent path so paired credentials are never picked up.
 
 ### Orchestration by reaction
 
@@ -93,8 +93,8 @@ Dependencies: M0 → M1 → M2 → M3, then M4 ∥ M7 (M5 can start once the M4 
 - [x] M0.3 React + Vite app skeleton with a router, light/dark theme tokens and a dev proxy to the API.
 
 ### M1: Agent infrastructure
-- [ ] M1.1 `runtime.ts`, `ResilientRunner`, `FakeRunner`, the Coordinator skeleton, a generation_job repository, stage-failure mapping, watchdog, unhandledRejection guard, telemetry-credential warning.
-- [ ] M1.2 Generic "stage" helper: create agent → runLoop with structured output → parse + Zod-validate → hand to the coordinator → leave. Unit tests with `FakeRunner` (success, invalid JSON, API failure, timeout).
+- [x] M1.1 `runtime.ts` (init + telemetry guard), `ResilientRunner`, `FakeRunner`, unhandledRejection safety net.
+- [ ] M1.2 Generic `runStage` helper (create agent → runLoop with structured output → resolve on its own `model.answer` / reject on its `stage.failed` or watchdog timeout → parse + Zod-validate → leave), plus a multi-turn variant for builder fix cycles, and a Coordinator skeleton that reacts to domain events. Unit tests with `FakeRunner` (success, invalid JSON, schema mismatch, API failure, timeout, concurrent stages).
 - [ ] M1.3 Real-API smoke script (`npm run smoke:agent`) with a trivial structured-output agent on both models. Opus runs it once to confirm 4.1.0 + Anthropic structured output work end to end.
 
 ### M2: Courses, classes, materials
@@ -104,7 +104,7 @@ Dependencies: M0 → M1 → M2 → M3, then M4 ∥ M7 (M5 can start once the M4 
 
 ### M3: Combined notes
 - [ ] M3.1 lesson-writer prompt + output schema (`lessonMd`, `topics[]` with misconceptions found in notes, deferred flag). Works with no notes.
-- [ ] M3.2 Generate endpoint, job lifecycle, SSE stream, persistence of lesson, topics, and `notes` topic_events.
+- [ ] M3.2 `generation_job` table + repository (moved from M1, since it references `class`), generate endpoint, job lifecycle, SSE stream, persistence of lesson, topics, and `notes` topic_events.
 - [ ] M3.3 Lesson view: rendered Markdown with styled (P)/(D) tags and `⚠️ Ispravka` callouts, a live tracking table from the DB, a pipeline status panel.
 
 ### M4: Quiz branch
