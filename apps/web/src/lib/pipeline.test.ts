@@ -1,0 +1,40 @@
+import { describe, expect, it } from "vitest";
+import { job } from "../test/utils";
+import { groupJobs, mergeJobs } from "./pipeline";
+
+describe("mergeJobs", () => {
+  it("lets the live copy win and sorts newest first", () => {
+    const fetched = [job({ id: 1, status: "failed" }), job({ id: 2 })];
+    const live = new Map([[2, job({ id: 2, status: "succeeded" })]]);
+    const merged = mergeJobs(fetched, live, 5);
+    expect(merged.map((j) => [j.id, j.status])).toEqual([
+      [2, "succeeded"],
+      [1, "failed"],
+    ]);
+  });
+
+  it("does not let a stale 'running' copy override a finished job", () => {
+    const merged = mergeJobs(
+      [job({ status: "succeeded" })],
+      new Map([[1, job({ status: "running" })]]),
+      5,
+    );
+    expect(merged[0]?.status).toBe("succeeded");
+  });
+
+  it("adds live jobs the query does not know yet and ignores other classes", () => {
+    const live = new Map([
+      [7, job({ id: 7 })],
+      [8, job({ id: 8, classId: 6 })],
+    ]);
+    expect(mergeJobs([], live, 5).map((j) => j.id)).toEqual([7]);
+  });
+});
+
+describe("groupJobs", () => {
+  it("puts the newest job of a kind first and the rest in earlier", () => {
+    const [group] = groupJobs([job({ id: 3 }), job({ id: 2 }), job({ id: 1 })]);
+    expect(group?.latest.id).toBe(3);
+    expect(group?.earlier.map((j) => j.id)).toEqual([2, 1]);
+  });
+});

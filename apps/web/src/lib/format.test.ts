@@ -6,6 +6,8 @@ import {
   countNotes,
   countPages,
   formatBytes,
+  formatCount,
+  formatDuration,
   plural,
   pluralForm,
 } from "./format";
@@ -80,6 +82,31 @@ describe("cadenceLabel", () => {
       "na svakih 12 predavanja",
       "na svako 21 predavanje",
       "na svakih 50 predavanja",
+    ]);
+  });
+});
+
+describe("formatCount", () => {
+  it("groups thousands with dots", () => {
+    expect([0, 999, 1000, 12400, 1234567].map(formatCount)).toEqual([
+      "0",
+      "999",
+      "1.000",
+      "12.400",
+      "1.234.567",
+    ]);
+  });
+});
+
+describe("formatDuration", () => {
+  it("shows seconds, then minutes with padded seconds", () => {
+    expect([0, 999, 42_000, 60_000, 185_000, -5].map(formatDuration)).toEqual([
+      "0 s",
+      "0 s",
+      "42 s",
+      "1 min 00 s",
+      "3 min 05 s",
+      "0 s",
     ]);
   });
 });

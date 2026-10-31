@@ -54,3 +54,18 @@ export function mimeLabel(mime: string): string {
   if (mime === "text/markdown") return "Markdown";
   return mime;
 }
+
+/** Integer with dot thousands separators ("12.400"), independent of the runtime's locale data. */
+export function formatCount(n: number): string {
+  return Math.round(n)
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
+/** "42 s" under a minute, otherwise "3 min 05 s". */
+export function formatDuration(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  if (total < 60) return `${total} s`;
+  const minutes = Math.floor(total / 60);
+  return `${minutes} min ${String(total % 60).padStart(2, "0")} s`;
+}

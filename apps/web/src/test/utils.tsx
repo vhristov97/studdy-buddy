@@ -6,8 +6,12 @@ import type {
   ClassDetail,
   CourseDetail,
   CourseSummary,
+  GenerationJob,
+  LessonView,
   MaterialDetail,
   MaterialSummary,
+  TopicEvent,
+  TopicView,
 } from "@studdy/shared";
 import { App } from "../App";
 
@@ -120,5 +124,48 @@ export const material = (over: Partial<MaterialSummary> = {}): MaterialSummary =
 export const materialDetail = (over: Partial<MaterialDetail> = {}): MaterialDetail => ({
   ...material(),
   extractedText: null,
+  ...over,
+});
+
+export const job = (over: Partial<GenerationJob> = {}): GenerationJob => ({
+  id: 1,
+  classId: 5,
+  kind: "lesson",
+  stage: "lesson-writer",
+  status: "running",
+  attempt: 1,
+  error: null,
+  createdAt: "2026-01-01T10:00:00.000Z",
+  finishedAt: null,
+  ...over,
+});
+
+export const topicEvent = (over: Partial<TopicEvent> = {}): TopicEvent => ({
+  id: 1,
+  source: "notes",
+  ref: null,
+  outcome: null,
+  misconceptionText: null,
+  correctionText: null,
+  createdAt: "2026-01-01T10:05:00.000Z",
+  ...over,
+});
+
+export const topic = (over: Partial<TopicView> = {}): TopicView => ({
+  id: 1,
+  name: "Veliki podaci",
+  position: 0,
+  rating: "?",
+  deferred: false,
+  deferredNote: null,
+  events: [],
+  ...over,
+});
+
+export const lessonView = (over: Partial<LessonView> = {}): LessonView => ({
+  classId: 5,
+  bodyMd: "## Uvod\n\n- (P) Predavač je rekao da je to važno.\n",
+  createdAt: "2026-01-01T10:05:00.000Z",
+  topics: [topic()],
   ...over,
 });

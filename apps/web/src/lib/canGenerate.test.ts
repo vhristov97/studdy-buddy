@@ -35,7 +35,18 @@ describe("canGenerate", () => {
     });
   });
 
-  it("is not ok once the class left draft", () => {
+  it("is ok for a failed class (retry)", () => {
+    expect(canGenerate(classDetail({ status: "failed", materials: [material()] })).ok).toBe(true);
+  });
+
+  it("is not ok while generating", () => {
+    expect(canGenerate(classDetail({ status: "generating", materials: [material()] }))).toEqual({
+      ok: false,
+      reason: "Generisanje je u toku.",
+    });
+  });
+
+  it("is not ok once generated", () => {
     const result = canGenerate(classDetail({ status: "ready", materials: [material()] }));
     expect(result.ok).toBe(false);
     expect(result.reason).toBe("Predavanje je već generisano.");

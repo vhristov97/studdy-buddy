@@ -1,0 +1,64 @@
+.lesson {
+  max-width: 75ch;
+  line-height: 1.65;
+}
+
+.lesson h2 {
+  margin-top: var(--space-6);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--font-size-lg);
+}
+
+.lesson h3 {
+  margin-top: var(--space-5);
+  font-size: var(--font-size-base);
+}
+
+.lesson p {
+  margin: 0 0 var(--space-3);
+}
+
+.lesson ul,
+.lesson ol {
+  margin: 0 0 var(--space-3);
+  padding-left: 1.4rem;
+}
+
+.lesson li {
+  margin-bottom: var(--space-1);
+}
+
+.lesson li > ul,
+.lesson li > ol {
+  margin-top: var(--space-1);
+  margin-bottom: 0;
+}
+
+.lesson blockquote.callout {
+  margin: var(--space-4) 0;
+  padding: var(--space-2) var(--space-4);
+  border-left-width: 4px;
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+}
+
+.lesson blockquote.callout > :last-child {
+  margin-bottom: 0;
+}
+
+.lesson blockquote.callout.correction {
+  border-color: var(--color-callout-correction-border);
+  background-color: var(--color-callout-correction-bg);
+}
+
+.lesson blockquote.callout.question {
+  border-color: var(--color-callout-question-border);
+  background-color: var(--color-callout-question-bg);
+}
+
+.lesson blockquote.callout.deferred {
+  border-color: var(--color-callout-deferred-border);
+  background-color: var(--color-callout-deferred-bg);
+  color: var(--color-text-muted);
+}

@@ -1,12 +1,6 @@
 import { SemanticEvent, SituationSpecification, createHuman, type Human } from "@mozaik-ai/core";
 import { STAGE_FAILED, join, leave, resolveRuntime } from "./runtime.js";
 
-/** Domain events the coordinator emits and reacts to. Real pipeline events are added per milestone. */
-export const DOMAIN_EVENTS = {
-  DEMO_REQUESTED: "demo.requested",
-  DEMO_READY: "demo.ready",
-} as const;
-
 export const HANDLER_FAILED = "coordinator.handler_failed";
 
 export interface HandlerFailedPayload {
