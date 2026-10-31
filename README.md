@@ -64,7 +64,7 @@ The agents call Anthropic models through `MODEL_PLANNER` (writing, planning, rev
 
 ## Setup
 
-Requires Node.js 22 or newer and an Anthropic API key.
+Requires Node.js 22 or newer and an Anthropic API key (or a gateway key).
 
 ```bash
 npm install
@@ -73,6 +73,8 @@ npm run dev             # API on :3000, web app on http://127.0.0.1:5173
 ```
 
 `npm start` builds the web app and serves everything from the API server on :3000.
+
+Optionally set `ANTHROPIC_BASE_URL` in `.env` to route the agents through an Anthropic-compatible gateway, such as the hackathon credits gateway (`https://api.app.jigjoy.ai/gateway/anthropic`), and put that gateway's key in `ANTHROPIC_API_KEY`. The gateway sees every prompt, including your study materials.
 
 Data lives in `DATA_DIR` (default `./data`, git-ignored): the SQLite database `app.sqlite` and the uploaded files, stored by content hash. Migrations run automatically at startup.
 

@@ -90,7 +90,7 @@ Key concepts that shape the architecture:
 - Pass data between agents with `structuredOutput` (JSON schema, `strict: true`) on `runLoop`; the result arrives as JSON text in `model.answer`.
 - Tools are `FunctionTool` objects (`name`, `description`, `parameters`, `strict`, `invoke`), passed both to `createAgent` and to `runLoop`.
 - **Pin `@mozaik-ai/core@4.1.0`** (exact version). 4.2 is considered not stable yet; don't upgrade without the user's approval.
-- The provider is chosen by the `model` string (Anthropic models via `ANTHROPIC_API_KEY` in `.env`). 4.1.0 supports `claude-opus-5-5` and `claude-sonnet-5-5` (function calling, structured output, streaming), even though the docs' models page only lists 4.x models.
+- The provider is chosen by the `model` string (Anthropic models via `ANTHROPIC_API_KEY` in `.env`; an optional `ANTHROPIC_BASE_URL` in `.env` redirects these calls to a gateway, read by the SDK from the environment). 4.1.0 supports `claude-opus-5-5` and `claude-sonnet-5-5` (function calling, structured output, streaming), even though the docs' models page only lists 4.x models.
 - Streaming: `streaming: true` on `runLoop` emits `inference.stream` events, useful for showing pipeline progress in the UI.
 
 Gotchas verified in the 4.1.0 source (details and how we handle them are in `docs/PLAN.md` → Agent runtime):
