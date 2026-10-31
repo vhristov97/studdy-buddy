@@ -75,6 +75,13 @@ describe("buildQuizReviewerMessage", () => {
     }
   });
 
+  it("has no <lekcija> block for a cumulative review, and the instruction checks each class's lesson", () => {
+    const message = buildQuizReviewerMessage({ ...reviewInput(), lessonMd: "" });
+    expect(message).not.toContain("<lekcija>");
+    expect(message).toContain('<ranija_lekcija predavanje="1">');
+    expect(buildQuizReviewerInstruction()).toContain("check EVERY question against the lesson");
+  });
+
   it("has no earlier lesson section when there are no earlier lessons", () => {
     expect(buildQuizReviewerMessage({ ...reviewInput(), earlierLessons: [] })).not.toContain(
       "<ranija_lekcija",

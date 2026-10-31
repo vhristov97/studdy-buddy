@@ -60,6 +60,8 @@ export interface JobGroup {
   kind: JobKind;
   /** The visualization suggestion of a `viz` group; null for other kinds. */
   suggestionId: number | null;
+  /** The cumulative review ("K1") of a cumulative quiz group; null for the class's own quiz. */
+  quizCode: string | null;
   latest: GenerationJob;
   /** Older attempts, newest first. */
   earlier: GenerationJob[];
@@ -68,7 +70,8 @@ export interface JobGroup {
 /**
  * One group per kind, in pipeline order (lesson first). Grading is one group per submission, the
  * newest submission first. `viz` jobs build one visualization each, so they get a group per
- * suggestion (by suggestion id).
+ * suggestion (by suggestion id). Cumulative quiz jobs get a group per review code, after the
+ * class's own quiz.
  */
 export function groupJobs(jobs: readonly GenerationJob[]): JobGroup[] {
   const byKey = new Map<string, GenerationJob[]>();
@@ -76,9 +79,11 @@ export function groupJobs(jobs: readonly GenerationJob[]): JobGroup[] {
     const key =
       job.kind === "viz"
         ? `viz-${job.suggestionId}`
-        : job.submissionId === null
-          ? job.kind
-          : `${job.kind}-${job.submissionId}`;
+        : job.kind === "quiz" && job.quizCode !== null
+          ? `quiz-${job.quizCode}`
+          : job.submissionId === null
+            ? job.kind
+            : `${job.kind}-${job.submissionId}`;
     byKey.set(key, [...(byKey.get(key) ?? []), job]);
   }
   return [...byKey.entries()]
@@ -86,6 +91,7 @@ export function groupJobs(jobs: readonly GenerationJob[]): JobGroup[] {
       key,
       kind: list[0]!.kind,
       suggestionId: list[0]!.kind === "viz" ? list[0]!.suggestionId : null,
+      quizCode: list[0]!.kind === "quiz" ? list[0]!.quizCode : null,
       latest: list[0]!,
       earlier: list.slice(1),
     }))
@@ -94,15 +100,25 @@ export function groupJobs(jobs: readonly GenerationJob[]): JobGroup[] {
         JOB_KIND_ORDER.indexOf(a.kind) - JOB_KIND_ORDER.indexOf(b.kind) ||
         (a.kind === "viz"
           ? (a.suggestionId ?? 0) - (b.suggestionId ?? 0)
-          : b.latest.id - a.latest.id),
+          : a.kind === "quiz" && (a.quizCode !== null || b.quizCode !== null)
+            ? cumulativeNumber(a.quizCode) - cumulativeNumber(b.quizCode)
+            : b.latest.id - a.latest.id),
     );
+}
+
+/** Sort position of a quiz group: the class's own quiz (no code) first, then K1, K2, ... */
+function cumulativeNumber(code: string | null): number {
+  if (code === null) return 0;
+  const n = Number(code.replace(/\D/g, ""));
+  return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER;
 }
 
 /** Row label of a job; a `viz` job names its topic once the suggestions are known. */
 export function jobLabel(
-  job: Pick<GenerationJob, "kind" | "suggestionId">,
+  job: Pick<GenerationJob, "kind" | "suggestionId"> & { quizCode?: string | null },
   concepts?: ReadonlyMap<number, string>,
 ): string {
+  if (job.kind === "quiz" && job.quizCode) return `Kumulativni test ${job.quizCode}`;
   if (job.kind !== "viz") return JOB_KIND_LABELS[job.kind];
   const concept = job.suggestionId === null ? undefined : concepts?.get(job.suggestionId);
   return concept ? `${JOB_KIND_LABELS.viz}: ${concept}` : JOB_KIND_LABELS.viz;

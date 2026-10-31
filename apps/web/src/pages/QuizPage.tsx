@@ -134,6 +134,7 @@ function QuizPicker({ quiz }: { quiz: PublicQuiz }) {
         {options.map((item) => (
           <option key={item.id} value={String(item.id)}>
             {item.code} — {item.title}
+            {"classId" in item && item.classId === null ? " (kumulativni)" : ""}
           </option>
         ))}
       </select>

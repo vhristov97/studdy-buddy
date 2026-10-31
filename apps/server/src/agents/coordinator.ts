@@ -11,6 +11,7 @@ export interface HandlerFailedPayload {
 export interface CoordinatorLogger {
   error(obj: object, msg: string): void;
   debug?(obj: object, msg: string): void;
+  warn?(obj: object, msg: string): void;
 }
 
 export type DomainHandler<P = unknown> = (payload: P, event: SemanticEvent) => Promise<void> | void;

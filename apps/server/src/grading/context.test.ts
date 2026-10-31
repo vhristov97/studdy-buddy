@@ -16,6 +16,7 @@ import {
   topic,
   topicEvent,
 } from "../db/schema.js";
+import { nextReviewCode } from "../quiz/cumulative.js";
 import { loadGradingContext, nextCumulativeCode } from "./context.js";
 
 let dir: string;
@@ -220,12 +221,32 @@ afterAll(() => {
 });
 
 describe("nextCumulativeCode", () => {
-  it("is ceil(class / cadence), or K1 without a cadence", () => {
-    expect(nextCumulativeCode(1, 4)).toBe("K1");
-    expect(nextCumulativeCode(4, 4)).toBe("K1");
-    expect(nextCumulativeCode(5, 4)).toBe("K2");
-    expect(nextCumulativeCode(9, 4)).toBe("K3");
-    expect(nextCumulativeCode(7, null)).toBe("K1");
+  const freshCourse = (cadence: number | null, ...existing: string[]): number => {
+    const id = handle.db
+      .insert(course)
+      .values({ name: "Svež kurs", persona: "inženjer", reviewCadence: cadence })
+      .returning({ id: course.id })
+      .get().id;
+    for (const code of existing) addQuiz(id, null, code, { ...quizFixture(), code });
+    return id;
+  };
+
+  it("is K1 for a fresh course, with or without a cadence", () => {
+    expect(nextCumulativeCode(handle.db, freshCourse(4))).toBe("K1");
+    expect(nextCumulativeCode(handle.db, freshCourse(null))).toBe("K1");
+  });
+
+  it("follows K1, K2 without a cadence, never an existing review", () => {
+    const id = freshCourse(null, "K1");
+    expect(nextCumulativeCode(handle.db, id)).toBe("K2");
+    addQuiz(id, null, "K2", { ...quizFixture(), code: "K2" });
+    expect(nextCumulativeCode(handle.db, id)).toBe("K3");
+  });
+
+  it("is the smallest unused code, the one the schedule offers next (a manual K2 leaves K1)", () => {
+    const id = freshCourse(4, "K2");
+    expect(nextCumulativeCode(handle.db, id)).toBe("K1");
+    expect(nextCumulativeCode(handle.db, id)).toBe(nextReviewCode(handle.db, id));
   });
 });
 
@@ -304,12 +325,12 @@ describe("loadGradingContext", () => {
     });
   });
 
-  it("derives the next cumulative code from the class number and the cadence", () => {
-    expect(loadGradingContext(handle.db, sub2).nextCumulativeCode).toBe("K1");
+  it("derives the next cumulative code: the smallest unused K<n>, whatever the cadence", () => {
+    expect(loadGradingContext(handle.db, sub2).nextCumulativeCode).toBe("K2");
     handle.db.update(course).set({ reviewCadence: 1 }).run();
     expect(loadGradingContext(handle.db, sub2).nextCumulativeCode).toBe("K2");
     handle.db.update(course).set({ reviewCadence: null }).run();
-    expect(loadGradingContext(handle.db, sub2).nextCumulativeCode).toBe("K1");
+    expect(loadGradingContext(handle.db, sub2).nextCumulativeCode).toBe("K2");
     handle.db.update(course).set({ reviewCadence: 4 }).run();
   });
 
@@ -367,7 +388,9 @@ describe("loadGradingContext", () => {
       ["Skladišta podataka", 1],
     ]);
     expect(ctx.lessons.map((l) => l.classNumber)).toEqual([1, 2]);
-    expect(ctx.nextCumulativeCode).toBe("K1");
+    // The review after K1.
+    expect(ctx.nextCumulativeCode).toBe("K2");
+    expect(ctx.dueQuizByClass).toEqual({ 1: "K2", 2: "K2" });
   });
 
   it("throws for a missing submission", () => {

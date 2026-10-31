@@ -320,29 +320,96 @@ describe("grading branch", () => {
     expect(grade.mock.calls[0]![0].submission.id).toBe(submissionId);
   });
 
-  it("skips quizzes that belong to no class", async () => {
-    const q = quizFixture();
-    const kQuiz = db()
-      .insert(quiz)
-      .values({
-        courseId,
-        classId: null,
-        code: "K1",
-        title: q.title,
-        subtitle: q.subtitle,
-        chipsJson: q.chips,
-        questionsJson: q.questions,
-      })
-      .returning({ id: quiz.id })
-      .get().id;
-    const id = newSubmission(kQuiz);
-    submit(id, kQuiz);
-    await new Promise((r) => setTimeout(r, 50));
-    expect(jobs()).toEqual([]);
-    expect(grade).not.toHaveBeenCalled();
-    await expect(
-      t.app.inject({ method: "POST", url: `/api/submissions/${id}/grade` }),
-    ).resolves.toMatchObject({ statusCode: 409 });
+  describe("cumulative (K) quizzes", () => {
+    /** A K1 over classes 1..2: the fixture questions as repeats with their class numbers. */
+    function addKQuiz(): { kQuiz: number; kJobClass: number } {
+      const q = { ...quizFixture(), code: "K1" };
+      const kQuiz = db()
+        .insert(quiz)
+        .values({
+          courseId,
+          classId: null,
+          code: "K1",
+          title: q.title,
+          subtitle: q.subtitle,
+          chipsJson: q.chips,
+          questionsJson: q.questions,
+        })
+        .returning({ id: quiz.id })
+        .get().id;
+      const classOf: Record<string, number> = {
+        "Batch obrada": 2,
+        "Stream obrada": 2,
+        "Skladišta podataka": 1,
+      };
+      const plan = planFixture();
+      plan.code = "K1";
+      plan.leftOut = [];
+      plan.questions = plan.questions.map((p) => ({
+        ...p,
+        isRepeat: true,
+        classNumber: classOf[p.topic]!,
+        ref: `Predavanje ${classOf[p.topic]} › Odeljak`,
+      }));
+      const job = db()
+        .insert(generationJob)
+        .values({
+          classId: class2,
+          kind: "quiz",
+          stage: "quiz-reviewer",
+          status: "succeeded",
+          attempt: 1,
+          quizCode: "K1",
+        })
+        .returning({ id: generationJob.id })
+        .get().id;
+      db().update(quiz).set({ jobId: job }).where(eq(quiz.id, kQuiz)).run();
+      db()
+        .insert(quizPlan)
+        .values({ jobId: job, classId: class2, planJson: plan, logJson: [], quizId: kQuiz })
+        .run();
+      return { kQuiz, kJobClass: class2 };
+    }
+
+    it("grades a K quiz in the class of its generation job and queues the next K", async () => {
+      const { kQuiz, kJobClass } = addKQuiz();
+      const id = newSubmission(kQuiz);
+      submit(id, kQuiz);
+      await waitFor(() => finished(1));
+
+      const [job] = jobs();
+      expect(job).toMatchObject({ status: "succeeded", classId: kJobClass, submissionId: id });
+      const ctx = grade.mock.calls[0]![0];
+      expect(ctx.quiz).toMatchObject({ code: "K1", classId: null });
+      expect(ctx.nextCumulativeCode).toBe("K2");
+      expect(ctx.questionTopics.find((t) => t.questionId === "q6")).toEqual({
+        questionId: "q6",
+        topic: "Skladišta podataka",
+        classNumber: 1,
+      });
+      expect(ctx.lessons.map((l) => l.classNumber)).toEqual([1, 2]);
+      expect(ctx.leftOutTopics).toEqual([]);
+      expect(db().select().from(result).where(eq(result.submissionId, id)).all()).toHaveLength(1);
+      // Topic events go to the right classes' topics.
+      expect(eventsOf("Skladišta podataka", class1, "quiz").map((e) => e.ref)).toContain("K1·q6");
+    });
+
+    it("regrades a K quiz through the route", async () => {
+      const { kQuiz } = addKQuiz();
+      const id = newSubmission(kQuiz);
+      const response = await t.app.inject({ method: "POST", url: `/api/submissions/${id}/grade` });
+      expect(response.statusCode).toBe(202);
+      await waitFor(() => finished(1));
+    });
+
+    it("falls back to the course's highest class when the quiz has no job", async () => {
+      const { kQuiz } = addKQuiz();
+      db().update(quiz).set({ jobId: null }).where(eq(quiz.id, kQuiz)).run();
+      const id = newSubmission(kQuiz);
+      submit(id, kQuiz);
+      await waitFor(() => finished(1));
+      expect(jobs()[0]!.classId).toBe(class2);
+    });
   });
 
   describe("failures persist nothing", () => {
@@ -686,7 +753,8 @@ describe("grading branch", () => {
         quizHistory: [],
         visualizations: [],
         observations: [],
-        flags: { classesWithoutLesson: [], ungradedSubmissions: [] },
+        cumulative: [],
+        flags: { classesWithoutLesson: [], ungradedSubmissions: [], cumulativeDue: null },
       });
       expect(
         (await t.app.inject({ method: "GET", url: "/api/courses/999/progress" })).statusCode,
@@ -773,6 +841,7 @@ describe("grading branch", () => {
         ungradedSubmissions: [
           { submissionId: ungraded, quizCode: "P02", submittedAt: expect.any(String) },
         ],
+        cumulativeDue: null,
       });
     });
   });

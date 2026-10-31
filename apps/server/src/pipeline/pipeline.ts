@@ -65,6 +65,11 @@ export interface Pipeline {
    */
   requestQuizRegeneration(classId: number): GenerationJob;
   /**
+   * Starts a cumulative review (default: the due `K<n>`, else the next free one). See
+   * `QuizBranch.requestCumulative`. Throws 404/409 `ApiError`s.
+   */
+  requestCumulative(courseId: number, code?: string): GenerationJob;
+  /**
    * Grades a submission that has no result and whose latest grading job failed or is absent.
    * Throws 404/409 `ApiError`s.
    */
@@ -334,6 +339,7 @@ export function createPipeline({
   return {
     requestGeneration,
     requestQuizRegeneration: quizBranch.requestRegeneration,
+    requestCumulative: quizBranch.requestCumulative,
     requestGrading: gradingBranch.requestRegrade,
     requestVizTopicsRegeneration: vizBranch.requestTopicsRegeneration,
     requestVizRegeneration: vizBranch.requestVizRegeneration,

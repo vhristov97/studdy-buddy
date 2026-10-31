@@ -14,6 +14,7 @@ import type {
   CreateClassInput,
   CreateCourseInput,
   CreateVizSuggestionInput,
+  CumulativeStatus,
   CourseVisualization,
   ClassJobs,
   GenerationJob,
@@ -183,10 +184,24 @@ export function useCourseProgress(courseId: number) {
   return useQuery({
     queryKey: queryKeys.courseProgress(courseId),
     queryFn: () => apiGet<CourseProgress>(`/api/courses/${courseId}/progress`),
-    refetchInterval: (query) =>
-      query.state.data?.quizHistory.some((q) => q.gradingStatus === "running")
-        ? PROGRESS_POLL_MS
-        : false,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data) return false;
+      // A review whose grading failed (`grading_failed`) waits for the student; no polling for it.
+      const busy =
+        data.quizHistory.some((q) => q.gradingStatus === "running") ||
+        data.cumulative.some((c) => c.status === "building" || c.status === "submitted");
+      return busy ? PROGRESS_POLL_MS : false;
+    },
+  });
+}
+
+/** Cumulative review status of a course: cadence, the review that is due, the released ones. */
+export function useCumulativeStatus(courseId: number, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.courseCumulative(courseId),
+    queryFn: () => apiGet<CumulativeStatus>(`/api/courses/${courseId}/cumulative`),
+    enabled,
   });
 }
 
@@ -317,6 +332,28 @@ export function useRegenerateQuiz(classId: number) {
     // A failed POST (e.g. 409) may still mean the jobs changed under us. The "courses" prefix
     // covers the course's quiz library.
     onSettled: () => invalidateClassAndCourse(client, classId),
+  });
+}
+
+/**
+ * Starts a cumulative review: the one with `code` (also to rebuild a failed one), or without a
+ * code the due one, else the next free one. A 409 means it exists, is already being built, or no
+ * lesson is ready.
+ */
+export function useRequestCumulative(courseId: number) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (code?: string) =>
+      apiPost<GenerationJob>(
+        `/api/courses/${courseId}/cumulative`,
+        code === undefined ? undefined : { code },
+      ),
+    // Even a failed POST (409) may mean the state changed under us. The "courses" prefix covers
+    // the status, the progress schedule and the quiz library.
+    onSettled: (job) => {
+      void client.invalidateQueries({ queryKey: queryKeys.course(courseId) });
+      if (job) void client.invalidateQueries({ queryKey: queryKeys.classJobs(job.classId) });
+    },
   });
 }
 

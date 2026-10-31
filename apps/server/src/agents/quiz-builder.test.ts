@@ -10,6 +10,7 @@ import {
   buildQuizBuilderInstruction,
   buildQuizBuilderMessage,
   buildQuizFixMessage,
+  normalizeQuizDraft,
   openQuizBuilderSession,
   quizBuilderSpec,
   quizDraftSchema,
@@ -35,20 +36,46 @@ function issuesOf(draft: unknown): string {
   return result.success ? "" : result.error.issues.map((i) => i.message).join("\n");
 }
 
+function mcAt(draft: QuizDraft, i: number) {
+  const q = draft.quiz.questions[i]!;
+  if (q.type !== "mc") throw new Error("not mc");
+  return q;
+}
+
+describe("normalizeQuizDraft", () => {
+  it("accepts a correct option at the wrong index and moves it to the planned one", () => {
+    const wrong = draftFixture();
+    const q = mcAt(wrong, 0); // planned index 1
+    const correctText = q.options[q.answer]!;
+    const original = [...q.options];
+    const swapped = [...original];
+    [swapped[1], swapped[2]] = [swapped[2]!, swapped[1]!];
+    q.options = swapped;
+    q.answer = 2;
+    expect(issuesOf(wrong)).toBe("");
+
+    const fixed = normalizeQuizDraft(planFixture(), wrong);
+    const nq = mcAt(fixed, 0);
+    expect(nq.answer).toBe(1);
+    expect(nq.options[1]).toBe(correctText);
+    expect([...nq.options].sort()).toEqual([...original].sort());
+    // only the two swapped positions differ from the wrong draft's options
+    expect(nq.options.filter((o, i) => o !== q.options[i])).toHaveLength(2);
+    // pure: the input is untouched
+    expect(q.answer).toBe(2);
+    expect(q.options).toEqual(swapped);
+  });
+
+  it("leaves a draft with every correct option in place unchanged", () => {
+    expect(normalizeQuizDraft(planFixture(), draftFixture())).toEqual(draftFixture());
+  });
+});
+
 const bad: [string, () => QuizDraft, string][] = [
   [
     "a wrong quiz code",
     () => mutated((d) => void (d.quiz.code = "P09")),
     'quiz.code must be "P02"',
-  ],
-  [
-    "a changed mc answer index",
-    () =>
-      mutated((d) => {
-        const q = d.quiz.questions[0]!;
-        if (q.type === "mc") q.answer = 2;
-      }),
-    "correct option must be at index 1 as planned, not 2",
   ],
   [
     "a changed mc option count",
@@ -174,6 +201,18 @@ describe("buildQuizBuilderMessage", () => {
     ]) {
       expect(message).toContain(s);
     }
+  });
+
+  it("has no <lekcija> block for a cumulative review (empty lesson), only the covered lessons", () => {
+    const message = buildQuizBuilderMessage({
+      plan: planFixture(),
+      lessonMd: "",
+      notesMisconceptions: [],
+      earlierLessons: [{ classNumber: 1, title: "Skladišta", lessonMd: "RANIJA-LEKCIJA-TEKST" }],
+    });
+    expect(message).not.toContain("<lekcija>");
+    expect(message).toContain('<ranija_lekcija predavanje="1">');
+    expect(buildQuizBuilderInstruction()).toContain('cumulative review "K<n>"');
   });
 
   it("has no earlier lesson section when there are no earlier lessons", () => {
@@ -313,6 +352,57 @@ describe("quiz builder with FakeRunner (no API)", () => {
     queue = [fakeJsonAnswer(make()), fakeJsonAnswer(draftFixture())];
     await expect(buildQuiz(planFixture(), "Lekcija", [], [])).resolves.toEqual(draftFixture());
     expect(inner.calls).toHaveLength(2);
+  });
+
+  it("returns normalized drafts from one-shot builds and sessions", async () => {
+    const wrong = draftFixture();
+    const q = mcAt(wrong, 1); // planned index 2
+    const correctText = q.options[q.answer]!;
+    const other = q.options[0]!;
+    q.options[0] = correctText;
+    q.options[q.answer] = other;
+    q.answer = 0;
+
+    queue = [fakeJsonAnswer(wrong), fakeJsonAnswer(wrong)];
+    const built = await buildQuiz(planFixture(), "Lekcija", [], []);
+    expect(built).toEqual(draftFixture());
+
+    const session = openQuizBuilderSession(planFixture());
+    try {
+      const result = await session.send("Napravi kviz");
+      expect(mcAt(result, 1).answer).toBe(2);
+      expect(mcAt(result, 1).options[2]).toBe(correctText);
+    } finally {
+      session.close();
+    }
+    expect(inner.calls).toHaveLength(2);
+  });
+
+  it("sends the normalized quiz with the next message after a swap", async () => {
+    // The builder puts the correct option of q2 at index 0; the plan wants it at index 2.
+    const own = draftFixture();
+    const oq = mcAt(own, 1);
+    const swapped = oq.options[0]!;
+    oq.options[0] = oq.options[oq.answer]!;
+    oq.options[oq.answer] = swapped;
+    oq.answer = 0;
+    queue = [fakeJsonAnswer(own), fakeJsonAnswer(draftFixture())];
+
+    const session = openQuizBuilderSession(planFixture());
+    let normalized: QuizDraft;
+    try {
+      normalized = await session.send("Napravi kviz");
+      expect(mcAt(normalized, 1).answer).toBe(2);
+      await session.send("Ispravi opciju 2");
+    } finally {
+      session.close();
+    }
+    const firstMessage = seen[0]!.join("\n");
+    const secondMessage = seen[1]!.join("\n");
+    expect(firstMessage).not.toContain("trenutna verzija kviza");
+    expect(secondMessage).toContain("trenutna verzija kviza");
+    expect(secondMessage).toContain(JSON.stringify(normalized, null, 2));
+    expect(secondMessage).toContain("Ispravi opciju 2");
   });
 
   it("keeps the conversation across a build and a fix round in one session", async () => {

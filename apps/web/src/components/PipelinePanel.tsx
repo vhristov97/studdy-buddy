@@ -6,8 +6,10 @@ import { useClassEvents } from "../api/events";
 import {
   useClassJobs,
   useCourseQuizzes,
+  useCumulativeStatus,
   useGradeSubmission,
   useRegenerateQuiz,
+  useRequestCumulative,
   useSubmissions,
   useVizSuggestions,
 } from "../api/hooks";
@@ -52,7 +54,11 @@ export function PipelinePanel({ classId, courseId, classStatus, onRetry, retryin
   const jobs = mergeJobs(fetched ?? [], live.jobs, classId);
   const now = useNow(jobs.some((job) => job.status === "running"));
   const startQuiz = useRegenerateQuiz(classId);
-  const latestQuiz = jobs.find((job) => job.kind === "quiz");
+  const requestCumulative = useRequestCumulative(courseId);
+  // The failed review whose retry was pressed (the error is shown on its row).
+  const [rebuildCode, setRebuildCode] = useState<string | null>(null);
+  // Cumulative (K) quiz jobs are separate from the class's own quiz.
+  const hasSucceededQuiz = jobs.some((job) => job.kind === "quiz" && job.status === "succeeded");
   const grade = useGradeSubmission();
   const gradingIds = [
     ...new Set(
@@ -60,9 +66,14 @@ export function PipelinePanel({ classId, courseId, classStatus, onRetry, retryin
     ),
   ];
   const submissions = useSubmissions(gradingIds);
+  // A failed review is retried only while it is still the next one to build.
+  const hasFailedReview = jobs.some(
+    (job) => job.kind === "quiz" && job.quizCode !== null && job.status === "failed",
+  );
+  const cumulative = useCumulativeStatus(courseId, hasFailedReview);
   const quizzes = useCourseQuizzes(
     courseId,
-    latestQuiz?.status === "succeeded" || gradingIds.length > 0,
+    hasSucceededQuiz || gradingIds.length > 0 || hasFailedReview,
   );
   const gradingTargets = new Map<number, GradingTarget>();
   gradingIds.forEach((id, i) => {
@@ -93,6 +104,25 @@ export function PipelinePanel({ classId, courseId, classStatus, onRetry, retryin
       onRetry={classStatus === "failed" ? onRetry : undefined}
       retrying={retrying}
       releasedQuiz={quizzes.data?.find((quiz) => quiz.classId === classId)}
+      cumulativeQuizzes={quizzes.data?.filter((quiz) => quiz.classId === null)}
+      canRebuildCumulative={(code) =>
+        cumulative.data?.nextCode === code && !quizzes.data?.some((quiz) => quiz.code === code)
+      }
+      // The server builds the next review; a stale explicit code (a failed job from before the
+      // "next code only" rule) would be refused.
+      onRebuildCumulative={(code) => {
+        setRebuildCode(code);
+        requestCumulative.mutate(undefined);
+      }}
+      rebuildingCumulative={requestCumulative.isPending}
+      rebuildCumulativeError={
+        requestCumulative.isError && rebuildCode !== null
+          ? {
+              code: rebuildCode,
+              message: startQuizErrorText(requestCumulative.error),
+            }
+          : null
+      }
       onStartQuiz={classStatus === "ready" ? () => startQuiz.mutate() : undefined}
       startingQuiz={startQuiz.isPending}
       startQuizError={startQuiz.isError ? startQuizErrorText(startQuiz.error) : null}
@@ -131,6 +161,17 @@ interface StagesProps {
   retrying?: boolean;
   /** The released quiz of this class, if known; shown on a succeeded quiz job. */
   releasedQuiz?: QuizSummary;
+  /** The released cumulative quizzes of the course; shown on a succeeded cumulative job. */
+  cumulativeQuizzes?: readonly QuizSummary[];
+  /** Builds a failed cumulative review again from scratch; leave out to hide the button. */
+  onRebuildCumulative?: (code: string) => void;
+  /**
+   * Whether a failed review can still be built again (it is the next review and not released);
+   * otherwise its row shows a stale-attempt note instead of the button. Defaults to always.
+   */
+  canRebuildCumulative?: (code: string) => boolean;
+  rebuildingCumulative?: boolean;
+  rebuildCumulativeError?: { code: string; message: string } | null;
   /**
    * Starts the quiz again (failed job) or for the first time (class generated before quizzes
    * existed). Leave out unless the class is ready.
@@ -154,6 +195,11 @@ export function PipelineStages({
   onRetry,
   retrying,
   releasedQuiz,
+  cumulativeQuizzes,
+  onRebuildCumulative,
+  canRebuildCumulative,
+  rebuildingCumulative,
+  rebuildCumulativeError,
   onStartQuiz,
   startingQuiz,
   startQuizError,
@@ -166,7 +212,10 @@ export function PipelineStages({
   const lessonDone = groups.some(
     ({ kind, latest }) => kind === "lesson" && latest.status === "succeeded",
   );
-  const offerFirstQuiz = onStartQuiz && lessonDone && !groups.some(({ kind }) => kind === "quiz");
+  const offerFirstQuiz =
+    onStartQuiz &&
+    lessonDone &&
+    !groups.some(({ kind, quizCode }) => kind === "quiz" && quizCode === null);
   const quizButton = (label: string) => (
     <Button variant="primary" onClick={onStartQuiz} disabled={startingQuiz}>
       {label}
@@ -179,7 +228,7 @@ export function PipelineStages({
       </h2>
       <div aria-live="polite">
         <ul className={styles.stages}>
-          {groups.map(({ key, kind, latest, earlier }) => (
+          {groups.map(({ key, kind, quizCode, latest, earlier }) => (
             <li key={key} className={styles.stage}>
               <JobRow
                 job={latest}
@@ -191,19 +240,48 @@ export function PipelineStages({
                 }
                 chars={progress.get(latest.id)}
                 now={now}
-                released={kind === "quiz" ? releasedQuiz : undefined}
+                released={
+                  kind !== "quiz"
+                    ? undefined
+                    : quizCode === null
+                      ? releasedQuiz
+                      : cumulativeQuizzes?.find((quiz) => quiz.code === quizCode)
+                }
               />
               {kind === "lesson" && latest.status === "failed" && onRetry && (
                 <Button variant="primary" onClick={onRetry} disabled={retrying}>
                   Pokušaj ponovo
                 </Button>
               )}
-              {kind === "quiz" && latest.status === "failed" && onStartQuiz && (
-                <>
-                  {quizButton("Napravi kviz ispočetka")}
-                  {startQuizError && <ErrorMessage>{startQuizError}</ErrorMessage>}
-                </>
-              )}
+              {kind === "quiz" &&
+                quizCode !== null &&
+                latest.status === "failed" &&
+                onRebuildCumulative &&
+                ((canRebuildCumulative?.(quizCode) ?? true) ? (
+                  <>
+                    <Button
+                      variant="primary"
+                      onClick={() => onRebuildCumulative(quizCode)}
+                      disabled={rebuildingCumulative}
+                    >
+                      Napravi ispočetka
+                    </Button>
+                    {rebuildCumulativeError?.code === quizCode && (
+                      <ErrorMessage>{rebuildCumulativeError.message}</ErrorMessage>
+                    )}
+                  </>
+                ) : (
+                  <p className={styles.idle}>zastareo pokušaj</p>
+                ))}
+              {kind === "quiz" &&
+                quizCode === null &&
+                latest.status === "failed" &&
+                onStartQuiz && (
+                  <>
+                    {quizButton("Napravi kviz ispočetka")}
+                    {startQuizError && <ErrorMessage>{startQuizError}</ErrorMessage>}
+                  </>
+                )}
               {kind === "grading" &&
                 latest.status === "failed" &&
                 latest.submissionId !== null &&

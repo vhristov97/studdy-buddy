@@ -241,7 +241,7 @@ const bad: [string, () => GradingResult, string][] = [
   [
     "a wrong dueQuiz",
     () => mutated((r) => void (r.backlogAdd[0]!.dueQuiz = "K2")),
-    'dueQuiz must be "K1", not "K2"',
+    'dueQuiz must be "K1" for classNumber 2, not "K2"',
   ],
   [
     "a backlog topic that is not a quiz topic",
@@ -465,6 +465,17 @@ describe("gradingResultSchema", () => {
       ];
     });
     expect(issuesOf(result, ctx)).toBe("");
+  });
+
+  it("uses the per-class review code of the context for dueQuiz", () => {
+    const ctx = gradingCtxFixture({ nextCumulativeCode: "K1", dueQuizByClass: { 2: "K2" } });
+    const result = mutated((r) =>
+      r.backlogAdd.forEach((b) => void (b.dueQuiz = b.classNumber === 2 ? "K2" : "K1")),
+    );
+    expect(issuesOf(result, ctx)).toBe("");
+    expect(issuesOf(gradingResultFixture(), ctx)).toContain(
+      'dueQuiz must be "K2" for classNumber 2',
+    );
   });
 
   it("uses the K code of the context for dueQuiz", () => {

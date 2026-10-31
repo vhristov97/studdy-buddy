@@ -279,3 +279,12 @@
   gap: var(--space-1);
   overflow-wrap: anywhere;
 }
+
+/* Kumulativni testovi */
+.cumulativeAction {
+  margin: var(--space-3) 0 0;
+}
+
+.historyScore p {
+  margin: 0;
+}

@@ -121,6 +121,11 @@ export const generationJob = sqliteTable(
     suggestionId: integer("suggestion_id").references((): AnySQLiteColumn => vizSuggestion.id, {
       onDelete: "set null",
     }),
+    /**
+     * The cumulative quiz code ("K1") a `quiz` job builds; null for lesson quizzes. A cumulative
+     * job belongs to the highest class it covers (`class_id`), because jobs need a class.
+     */
+    quizCode: text("quiz_code"),
     /** The failed job this one retries. */
     parentJobId: integer("parent_job_id").references((): AnySQLiteColumn => generationJob.id, {
       onDelete: "set null",

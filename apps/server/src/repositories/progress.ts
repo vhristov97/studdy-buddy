@@ -16,6 +16,7 @@ import {
   visualization,
   vizSuggestion,
 } from "../db/schema.js";
+import { cumulativeSchedule, cumulativeStatus } from "../quiz/cumulative.js";
 import { gradingStateOf } from "./grading.js";
 
 /** Separates the quiz code from the question id in a quiz event's ref, e.g. "P01·q3". */
@@ -112,6 +113,8 @@ export function getCourseProgress(db: Db, courseId: number): CourseProgress {
           .get() !== undefined,
     );
 
+  const { due } = cumulativeStatus(db, courseId);
+
   return {
     nextSteps: db
       .select({ text: nextStep.text })
@@ -171,7 +174,9 @@ export function getCourseProgress(db: Db, courseId: number): CourseProgress {
       .orderBy(desc(learnerObservation.id))
       .all()
       .map((r) => r.text),
+    cumulative: cumulativeSchedule(db, courseId),
     flags: {
+      cumulativeDue: due ? { code: due.code, coversThrough: due.coversThrough } : null,
       classesWithoutLesson,
       ungradedSubmissions: submissions
         .filter(({ result: r }) => r === null)

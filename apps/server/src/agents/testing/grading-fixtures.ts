@@ -64,6 +64,7 @@ export function gradingCtxFixture(overrides: Partial<GradingContext> = {}): Grad
     ],
     leftOutTopics: [{ ...lambda!, classNumber: 2, reason: "Odloženo, tema nije obrađena." }],
     nextCumulativeCode: "K1",
+    dueQuizByClass: {},
     observations: [],
     backlog: [],
     nextSteps: [],

@@ -1,7 +1,12 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { CourseProgress, ProgressQuizHistoryEntry } from "@studdy/shared";
+import type {
+  CourseProgress,
+  CumulativeScheduleEntry,
+  CumulativeStatus,
+  ProgressQuizHistoryEntry,
+} from "@studdy/shared";
 import { apiError, courseDetail, mockApi, renderAt, type Handler } from "../test/utils";
 
 const entry = (over: Partial<ProgressQuizHistoryEntry> = {}): ProgressQuizHistoryEntry => ({
@@ -58,7 +63,8 @@ const progress = (over: Partial<CourseProgress> = {}): CourseProgress => ({
     },
   ],
   observations: ["Meša pojmove replikacije i particionisanja."],
-  flags: { classesWithoutLesson: [], ungradedSubmissions: [] },
+  cumulative: [],
+  flags: { classesWithoutLesson: [], ungradedSubmissions: [], cumulativeDue: null },
   ...over,
 });
 
@@ -120,6 +126,7 @@ describe("ProgressPage", () => {
           flags: {
             classesWithoutLesson: [],
             ungradedSubmissions: [{ submissionId: 9, quizCode: "P01", submittedAt: "x" }],
+            cumulativeDue: null,
           },
           quizHistory: [entry({ gradingStatus: "failed", openScore: null, totalScore: null })],
         });
@@ -237,6 +244,7 @@ describe("ProgressPage", () => {
     const flagged = () =>
       progress({
         flags: {
+          cumulativeDue: null,
           classesWithoutLesson: [{ classId: 7, number: 3, title: "Kafka", status: "draft" }],
           ungradedSubmissions: [
             {
@@ -300,6 +308,210 @@ describe("ProgressPage", () => {
       });
       await userEvent.click(await screen.findByRole("button", { name: "Oceni" }));
       expect(await screen.findByRole("alert")).toHaveTextContent("Ocenjivanje već traje.");
+    });
+  });
+
+  describe("cumulative reviews", () => {
+    const scheduleEntry = (
+      over: Partial<CumulativeScheduleEntry> = {},
+    ): CumulativeScheduleEntry => ({
+      code: "K1",
+      coversThrough: 4,
+      status: "available",
+      quizId: 11,
+      submissionId: null,
+      submittedAt: null,
+      totalScore: null,
+      ...over,
+    });
+    const status = (over: Partial<CumulativeStatus> = {}): CumulativeStatus => ({
+      cadence: 4,
+      readyClassCount: 4,
+      nextCode: "K1",
+      due: null,
+      existing: [],
+      ...over,
+    });
+    const flags = (cumulativeDue: CourseProgress["flags"]["cumulativeDue"]) => ({
+      classesWithoutLesson: [],
+      ungradedSubmissions: [],
+      cumulativeDue,
+    });
+    const openWith = (data: CourseProgress, cumulative: CumulativeStatus = status()) =>
+      open(data, { "GET /api/courses/1/cumulative": () => cumulative });
+
+    it("flags a due review at session start and posts the request", async () => {
+      const { requests } = openWith(
+        progress({
+          cumulative: [scheduleEntry({ status: "due", quizId: null })],
+          flags: flags({ code: "K1", coversThrough: 4 }),
+        }),
+        status({ due: { code: "K1", coversThrough: 4, classNumbers: [1, 2, 3, 4] } }),
+      );
+      const flagged = within(await screen.findByLabelText("Šta čeka"));
+      expect(flagged.getByText("K1 je na redu (predavanja 1–4)")).toBeVisible();
+      await userEvent.click(flagged.getByRole("button", { name: "Napravi K1" }));
+      await waitFor(() => {
+        const post = requests.find(
+          (r) => r.method === "POST" && r.path === "/api/courses/1/cumulative",
+        );
+        expect(post?.body).toBe(JSON.stringify({ code: "K1" }));
+      });
+    });
+
+    it("shows a 409 of the request inline", async () => {
+      open(
+        progress({
+          cumulative: [scheduleEntry({ status: "due", quizId: null })],
+          flags: flags({ code: "K1", coversThrough: 4 }),
+        }),
+        {
+          "GET /api/courses/1/cumulative": () => status(),
+          "POST /api/courses/1/cumulative": () => apiError(409, "conflict", "K1 se već pravi."),
+        },
+      );
+      await userEvent.click(await screen.findByRole("button", { name: "Napravi K1" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("K1 se već pravi.");
+    });
+
+    it("lists the schedule with a status per review", async () => {
+      openWith(
+        progress({
+          cumulative: [
+            scheduleEntry({
+              status: "graded",
+              submittedAt: new Date(2026, 1, 3, 9, 30).toISOString(),
+              totalScore: 17.5,
+            }),
+            scheduleEntry({ code: "K2", coversThrough: 8, status: "available", quizId: 12 }),
+            scheduleEntry({
+              code: "K3",
+              coversThrough: 12,
+              status: "submitted",
+              quizId: 13,
+              submittedAt: new Date(2026, 1, 4, 10, 0).toISOString(),
+            }),
+            scheduleEntry({ code: "K4", coversThrough: 16, status: "due", quizId: null }),
+            scheduleEntry({ code: "K5", coversThrough: 20, status: "building", quizId: null }),
+            scheduleEntry({
+              code: "K6",
+              coversThrough: 24,
+              status: "grading_failed",
+              quizId: 16,
+              submissionId: 77,
+            }),
+          ],
+        }),
+      );
+      const list = within(await screen.findByRole("region", { name: "Kumulativni testovi" }));
+      const items = list.getAllByRole("listitem");
+      expect(items).toHaveLength(6);
+      expect(items[0]).toHaveTextContent("predavanja 1–4");
+      expect(items[0]).toHaveTextContent("ocenjen");
+      expect(items[0]).toHaveTextContent("Ukupno: 17,5");
+      expect(items[0]).toHaveTextContent("Predat: 3. 2. 2026. 09:30");
+      expect(within(items[0]!).getByRole("link", { name: "K1" })).toHaveAttribute(
+        "href",
+        "/kvizovi/11",
+      );
+      expect(items[1]).toHaveTextContent("spreman");
+      expect(within(items[1]!).getByRole("link", { name: "K2" })).toHaveAttribute(
+        "href",
+        "/kvizovi/12",
+      );
+      expect(items[2]).toHaveTextContent("predat — ocenjivanje");
+      expect(items[3]).toHaveTextContent("na redu");
+      expect(within(items[3]!).queryByRole("link")).not.toBeInTheDocument();
+      expect(within(items[4]!).getByRole("status")).toHaveTextContent("pravi se…");
+      expect(items[5]).toHaveTextContent("ocenjivanje nije uspelo");
+      expect(within(items[5]!).getByRole("button", { name: "Oceni ponovo" })).toBeInTheDocument();
+    });
+
+    it("re-grades a review whose grading failed", async () => {
+      const { requests } = openWith(
+        progress({
+          cumulative: [scheduleEntry({ status: "grading_failed", submissionId: 77 })],
+        }),
+      );
+      await userEvent.click(await screen.findByRole("button", { name: "Oceni ponovo" }));
+      await waitFor(() =>
+        expect(
+          requests.some((r) => r.method === "POST" && r.path === "/api/submissions/77/grade"),
+        ).toBe(true),
+      );
+    });
+
+    describe("polling", () => {
+      afterEach(() => vi.useRealTimers());
+      const calls = (requests: { method: string; path: string }[]) =>
+        requests.filter((r) => r.method === "GET" && r.path === "/api/courses/1/progress").length;
+
+      it("does not poll a review whose grading failed", async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        const { requests } = open(
+          progress({
+            cumulative: [scheduleEntry({ status: "grading_failed", submissionId: 77 })],
+          }),
+          { "GET /api/courses/1/cumulative": () => status() },
+        );
+        await screen.findByText("ocenjivanje nije uspelo");
+        await vi.advanceTimersByTimeAsync(20000);
+        expect(calls(requests)).toBe(1);
+      });
+
+      it.each(["building", "submitted"] as const)(
+        "refetches every 5 s while a review is %s, then stops",
+        async (busy) => {
+          vi.useFakeTimers({ shouldAdvanceTime: true });
+          let n = 0;
+          const { requests } = open(progress(), {
+            "GET /api/courses/1/cumulative": () => status(),
+            "GET /api/courses/1/progress": () =>
+              ++n < 2
+                ? progress({ cumulative: [scheduleEntry({ status: busy })] })
+                : progress({ cumulative: [scheduleEntry({ status: "graded", totalScore: 9 })] }),
+          });
+          await screen.findByText("Kumulativni testovi");
+          expect(calls(requests)).toBe(1);
+          await vi.advanceTimersByTimeAsync(5000);
+          await waitFor(() => expect(calls(requests)).toBe(2));
+          await screen.findByText("Ukupno: 9");
+          await vi.advanceTimersByTimeAsync(20000);
+          expect(calls(requests)).toBe(2);
+        },
+      );
+    });
+
+    it("offers a manual review when the course has no cadence", async () => {
+      const { requests } = open(progress(), {
+        "GET /api/courses/1/cumulative": () => status({ cadence: null, readyClassCount: 2 }),
+        "POST /api/courses/1/cumulative": () => ({ id: 3, classId: 6 }),
+      });
+      expect(
+        await screen.findByText("Kurs nema podešen ritam kumulativnih testova."),
+      ).toBeVisible();
+      await userEvent.click(screen.getByRole("button", { name: "Napravi kumulativni test" }));
+      await waitFor(() => {
+        const post = requests.find((r) => r.method === "POST");
+        expect(post?.path).toBe("/api/courses/1/cumulative");
+        expect(post?.body).toBeUndefined();
+      });
+      expect(await screen.findByRole("link", { name: /Prati tok/ })).toHaveAttribute(
+        "href",
+        "/predavanja/6",
+      );
+    });
+
+    it("offers no manual review without a ready class, or when a cadence is set", async () => {
+      openWith(progress(), status({ cadence: null, readyClassCount: 0 }));
+      await screen.findByText("Kurs nema podešen ritam kumulativnih testova.");
+      expect(screen.queryByRole("button", { name: "Napravi kumulativni test" })).toBeNull();
+    });
+
+    it("says there are no reviews yet when a cadence is set", async () => {
+      openWith(progress());
+      expect(await screen.findByText("Još nema kumulativnih testova.")).toBeVisible();
+      expect(screen.queryByRole("button", { name: "Napravi kumulativni test" })).toBeNull();
     });
   });
 

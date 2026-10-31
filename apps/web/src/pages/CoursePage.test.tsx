@@ -249,4 +249,75 @@ describe("CoursePage", () => {
     renderAt("/kursevi/1");
     expect(await screen.findByText(/Još nema vizualizacija/)).toBeInTheDocument();
   });
+
+  describe("cumulative review", () => {
+    const status = (over = {}) => ({
+      cadence: 4,
+      readyClassCount: 4,
+      nextCode: "K1",
+      due: null,
+      existing: [],
+      ...over,
+    });
+
+    it("shows a due review with a button that posts the request", async () => {
+      const { requests } = mockApi({
+        ...courseRoutes(),
+        "GET /api/courses/1/quizzes": () => [],
+        "GET /api/courses/1/cumulative": () =>
+          status({ due: { code: "K1", coversThrough: 4, classNumbers: [1, 2, 3, 4] } }),
+        "POST /api/courses/1/cumulative": () => ({ id: 2, classId: 8 }),
+      });
+      renderAt("/kursevi/1");
+      expect(await screen.findByText("K1 je na redu")).toBeVisible();
+      await userEvent.click(screen.getByRole("button", { name: "Napravi K1" }));
+      await waitFor(() =>
+        expect(
+          requests.some((r) => r.method === "POST" && r.path === "/api/courses/1/cumulative"),
+        ).toBe(true),
+      );
+    });
+
+    it("shows nothing when no review is due", async () => {
+      mockApi({ ...courseRoutes(), "GET /api/courses/1/cumulative": () => status() });
+      renderAt("/kursevi/1");
+      await screen.findByRole("heading", { level: 2, name: "Kvizovi" });
+      await waitFor(() => expect(screen.queryByText(/je na redu/)).toBeNull());
+      expect(screen.queryByRole("button", { name: /Napravi/ })).toBeNull();
+    });
+
+    it("offers a manual review without a cadence", async () => {
+      mockApi({
+        ...courseRoutes(),
+        "GET /api/courses/1/cumulative": () => status({ cadence: null }),
+      });
+      renderAt("/kursevi/1");
+      expect(await screen.findByRole("button", { name: "Napravi kumulativni test" })).toBeVisible();
+    });
+  });
+
+  it("lists a cumulative quiz without a class, marked as cumulative", async () => {
+    mockApi({
+      ...courseRoutes(),
+      "GET /api/courses/1/quizzes": () => [
+        {
+          id: 3,
+          courseId: 1,
+          classId: null,
+          code: "K1",
+          title: "Kumulativni pregled 1",
+          subtitle: "Predavanja 1–4",
+          chips: [],
+          questionCount: 30,
+          createdAt: "2026-03-05T12:00:00.000Z",
+        },
+      ],
+    });
+    renderAt("/kursevi/1");
+    const item = (await screen.findByRole("link", { name: /K1/ })).closest("li")!;
+    expect(item).toHaveAttribute("class", expect.stringContaining("quizItem"));
+    expect(within(item).getByText("kumulativni")).toBeVisible();
+    expect(within(item).getByRole("link", { name: /K1/ })).toHaveAttribute("href", "/kvizovi/3");
+    expect(within(item).getByText("30 pitanja · 5. 3. 2026.")).toBeInTheDocument();
+  });
 });

@@ -326,6 +326,58 @@ describe("PipelinePanel", () => {
     );
   });
 
+  const cumulativeStatus = (nextCode: string) => ({
+    cadence: 4,
+    readyClassCount: 4,
+    nextCode,
+    due: null,
+    existing: [],
+  });
+  const failedK = (code: string) => ({
+    ...quizJob({ ...FAILED, error: "K greška" }),
+    quizCode: code,
+  });
+  const kRoutes = (code: string, nextCode: string, released: QuizSummary[] = []) => ({
+    "GET /api/classes/5/jobs": () => ({
+      jobs: [
+        failedK(code),
+        quizJob({ id: 4, status: "succeeded", finishedAt: "2026-01-01T10:00:55.000Z" }),
+        lessonDone(),
+      ],
+    }),
+    "GET /api/courses/1/cumulative": () => cumulativeStatus(nextCode),
+    "GET /api/courses/1/quizzes": () => released,
+    "POST /api/courses/1/cumulative": () => quizJob({ id: 9, attempt: 1 }),
+  });
+
+  it("retries a failed K job that is the next review, without a code", async () => {
+    const { requests } = mockApi(kRoutes("K1", "K1"));
+    renderPanel();
+    await userEvent.click(await screen.findByRole("button", { name: "Napravi ispočetka" }));
+    await waitFor(() =>
+      expect(requests).toContainEqual(
+        expect.objectContaining({ method: "POST", path: "/api/courses/1/cumulative" }),
+      ),
+    );
+    const post = requests.find((r) => r.path === "/api/courses/1/cumulative")!;
+    // no explicit code (the server builds the next review)
+    expect(post.body).toBeUndefined();
+  });
+
+  it("offers no retry for a failed K job whose code was released since", async () => {
+    mockApi(kRoutes("K1", "K2", [quizSummary({ id: 9, code: "K1", classId: null })]));
+    renderPanel();
+    expect(await screen.findByText("zastareo pokušaj")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Napravi ispočetka" })).toBeNull();
+  });
+
+  it("offers no retry for a failed legacy K job that is not the next review", async () => {
+    mockApi(kRoutes("K4", "K1"));
+    renderPanel();
+    expect(await screen.findByText("zastareo pokušaj")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Napravi ispočetka" })).toBeNull();
+  });
+
   it("shows the server message when the regeneration is refused", async () => {
     mockApi({
       "GET /api/classes/5/jobs": () => ({ jobs: [lessonDone()] }),
@@ -444,6 +496,92 @@ describe("PipelinePanel", () => {
     expect(screen.getByText("Vizualizacija: Replikacija")).toBeInTheDocument();
     expect(screen.getByText("Predlozi vizualizacija")).toBeInTheDocument();
     expect(sources).toEqual(["/api/classes/5/events"]);
+  });
+});
+
+describe("PipelineStages cumulative rows", () => {
+  const kJob = (over: Parameters<typeof job>[0] = {}) =>
+    quizJob({ id: 5, quizCode: "K1", ...over });
+  const labelsOf = (container: HTMLElement) =>
+    [...container.querySelectorAll("strong")].map((el) => el.textContent);
+
+  it("shows a K job as its own row, apart from the class's own quiz", () => {
+    const { container } = render(
+      <PipelineStages
+        jobs={[kJob(), quizJob({ id: 4, ...FAILED, error: "lekcija" }), lessonDone({ id: 1 })]}
+        progress={new Map()}
+        now={NOW}
+        onStartQuiz={vi.fn()}
+      />,
+    );
+    expect(labelsOf(container)).toEqual(["Objedinjene beleške", "Kviz", "Kumulativni test K1"]);
+    expect(container.querySelectorAll("details")).toHaveLength(0);
+  });
+
+  it("offers the class's first quiz even when only a K job exists", () => {
+    render(
+      <PipelineStages
+        jobs={[kJob(), lessonDone({ id: 1 })]}
+        progress={new Map()}
+        now={NOW}
+        onStartQuiz={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Napravi kviz" })).toBeInTheDocument();
+  });
+
+  it("ignores a failed K job for the lesson quiz button", () => {
+    const onStartQuiz = vi.fn();
+    render(
+      <PipelineStages
+        jobs={[
+          kJob({ ...FAILED, error: "K greška" }),
+          quizJob({ id: 4, status: "succeeded", finishedAt: "2026-01-01T10:00:55.000Z" }),
+          lessonDone({ id: 1 }),
+        ]}
+        progress={new Map()}
+        now={NOW}
+        onStartQuiz={onStartQuiz}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Napravi kviz ispočetka" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Napravi kviz" })).toBeNull();
+  });
+
+  it("rebuilds a failed K job with its code", async () => {
+    const onStartQuiz = vi.fn();
+    const onRebuildCumulative = vi.fn();
+    render(
+      <PipelineStages
+        jobs={[
+          kJob({ ...FAILED, error: "K greška" }),
+          quizJob({ id: 4, status: "succeeded", finishedAt: "2026-01-01T10:00:55.000Z" }),
+          lessonDone({ id: 1 }),
+        ]}
+        progress={new Map()}
+        now={NOW}
+        onStartQuiz={onStartQuiz}
+        onRebuildCumulative={onRebuildCumulative}
+        rebuildCumulativeError={{ code: "K1", message: "K1 već postoji." }}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Napravi ispočetka" }));
+    expect(onRebuildCumulative).toHaveBeenCalledWith("K1");
+    expect(onStartQuiz).not.toHaveBeenCalled();
+    expect(screen.getByText("K1 već postoji.")).toBeInTheDocument();
+  });
+
+  it("links a succeeded K job to its released quiz", () => {
+    render(
+      <PipelineStages
+        jobs={[kJob({ status: "succeeded", finishedAt: "2026-01-01T10:00:55.000Z" })]}
+        progress={new Map()}
+        now={NOW}
+        releasedQuiz={quizSummary({ id: 1, code: "P01", classId: 5 })}
+        cumulativeQuizzes={[quizSummary({ id: 9, code: "K1", classId: null })]}
+      />,
+    );
+    expect(screen.getByRole("link", { name: /^K1/ })).toHaveAttribute("href", "/kvizovi/9");
   });
 });
 

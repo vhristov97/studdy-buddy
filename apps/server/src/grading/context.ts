@@ -13,6 +13,7 @@ import {
 } from "../db/schema.js";
 import { getLessonView } from "../repositories/lessons.js";
 import { getFullQuiz } from "../repositories/quizzes.js";
+import { nextReviewCode, parseCumulativeCode, reviewCodeForClass } from "../quiz/cumulative.js";
 import { toTopicInput, type BacklogItem, type QuizTopicInput } from "../quiz/context.js";
 
 export type GradingTopic = QuizTopicInput & { classNumber: number };
@@ -51,8 +52,14 @@ export interface GradingContext {
   questionTopics: { questionId: string; topic: string; classNumber: number }[];
   /** Topics the plan left out of the quiz (resolved to topic rows); they go to the backlog as left_out. */
   leftOutTopics: (GradingTopic & { reason: string })[];
-  /** The cumulative quiz that follows this class, "K<n>"; "K1" when the course has no cadence. */
+  /** The next review of the course: the smallest "K<n>" with no released quiz (see {@link nextCumulativeCode}). */
   nextCumulativeCode: string;
+  /**
+   * The `dueQuiz` label of a backlog item per class number (of the quiz's topics and left-out
+   * topics): the code of the next review that covers that class (see `reviewCodeForClass`). A
+   * class missing here takes {@link nextCumulativeCode}. Informational: reviews cover by class.
+   */
+  dueQuizByClass: Record<number, string>;
   /** Cross-course observations about the student, oldest first (the newest {@link MAX_OBSERVATIONS}). */
   observations: string[];
   /** The course's unresolved backlog items. */
@@ -102,10 +109,12 @@ export function loadNextSteps(db: Db, courseId: number): string[] {
     .map((r) => r.text);
 }
 
-/** "K<n>" with n = ceil(classNumber / cadence), or "K1" when the course has no cadence. */
-export function nextCumulativeCode(classNumber: number, cadence: number | null): string {
-  if (cadence === null || cadence < 1) return "K1";
-  return `K${Math.max(1, Math.ceil(classNumber / cadence))}`;
+/**
+ * The next review of the course (the smallest `K<n>` with no released quiz), which is also the one
+ * the schedule calls for next. For a graded cumulative quiz that quiz exists, so it is naturally skipped.
+ */
+export function nextCumulativeCode(db: Db, courseId: number): string {
+  return nextReviewCode(db, courseId);
 }
 
 interface ClassEntry {
@@ -157,8 +166,8 @@ export function loadGradingContext(db: Db, submissionId: number): GradingContext
 
   const currentClass =
     quizRow.classId === null ? undefined : classes.find((c) => c.id === quizRow.classId);
-  // A cumulative quiz belongs to no class; it counts as following the latest class.
-  const classNumber = currentClass?.number ?? Math.max(1, ...classes.map((c) => c.number));
+  // A cumulative quiz "K<n>" belongs to no class: it counts as following the latest class.
+  const reviewNumber = quizRow.classId === null ? parseCumulativeCode(quizRow.code) : null;
   const earlier = classes
     .filter((c) => (currentClass ? c.number < currentClass.number : true))
     .reverse(); // most recent first
@@ -214,7 +223,8 @@ export function loadGradingContext(db: Db, submissionId: number): GradingContext
   }
 
   const leftOutTopics: GradingContext["leftOutTopics"] = [];
-  for (const left of plan?.leftOut ?? []) {
+  // A cumulative review's left-out topics are not carried to the backlog (they were not new gaps).
+  for (const left of reviewNumber === null ? (plan?.leftOut ?? []) : []) {
     const resolved = resolveTopic(left.topic, false);
     if (!resolved) continue;
     if (leftOutTopics.some((t) => t.name === left.topic)) continue;
@@ -253,7 +263,13 @@ export function loadGradingContext(db: Db, submissionId: number): GradingContext
     topics,
     questionTopics,
     leftOutTopics,
-    nextCumulativeCode: nextCumulativeCode(classNumber, courseRow.reviewCadence),
+    nextCumulativeCode: nextCumulativeCode(db, courseRow.id),
+    dueQuizByClass: Object.fromEntries(
+      [...new Set([...topics, ...leftOutTopics].map((t) => t.classNumber))].map((n) => [
+        n,
+        reviewCodeForClass(db, courseRow.id, n),
+      ]),
+    ),
     observations: loadObservations(db),
     backlog: loadBacklog(db, courseRow.id),
     nextSteps: loadNextSteps(db, courseRow.id),

@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import type { GenerationJob, GradingResult } from "@studdy/shared";
 import type { Coordinator, CoordinatorLogger } from "../agents/coordinator.js";
 import { gradeSubmission as realGradeSubmission } from "../agents/grader.js";
@@ -73,6 +73,36 @@ function describeError(error: unknown): string {
   return truncate(message);
 }
 
+/**
+ * The class a grading job belongs to (jobs need one for the event stream). A lesson quiz has its
+ * class. A cumulative (K) quiz has none: it uses the class of the quiz's generation job (the highest
+ * class the review covers) or, failing that, the course's highest class. Null when the course has
+ * no class at all.
+ */
+function gradingClassId(
+  db: Db | Tx,
+  owner: Pick<typeof quizTable.$inferSelect, "classId" | "courseId" | "jobId">,
+): number | null {
+  if (owner.classId !== null) return owner.classId;
+  if (owner.jobId !== null) {
+    const job = db
+      .select({ classId: generationJob.classId })
+      .from(generationJob)
+      .where(eq(generationJob.id, owner.jobId))
+      .get();
+    if (job) return job.classId;
+  }
+  return (
+    db
+      .select({ id: classTable.id })
+      .from(classTable)
+      .where(eq(classTable.courseId, owner.courseId))
+      .orderBy(desc(classTable.number))
+      .limit(1)
+      .get()?.id ?? null
+  );
+}
+
 export function registerGradingBranch({
   db,
   coordinator,
@@ -127,13 +157,9 @@ export function registerGradingBranch({
       if (last && last.status !== "failed") {
         throw new ConflictError("The grading job finished without a result");
       }
-      if (owner.classId === null) {
-        throw new ConflictError("Quizzes without a class cannot be graded yet");
-      }
-      return {
-        jobId: insertGradingJob(tx, owner.classId, sub.id, last?.id ?? null),
-        classId: owner.classId,
-      };
+      const classId = gradingClassId(tx, owner);
+      if (classId === null) throw new ConflictError("The course has no class to grade in");
+      return { jobId: insertGradingJob(tx, classId, sub.id, last?.id ?? null), classId };
     });
     startJob(jobId, classId, submissionId);
     return getJob(db, jobId)!;
@@ -143,12 +169,11 @@ export function registerGradingBranch({
   function onSubmissionCreated({ quizId, submissionId }: SubmissionCreatedPayload): void {
     const owner = db.select().from(quizTable).where(eq(quizTable.id, quizId)).get();
     if (!owner) return;
-    if (owner.classId === null) {
-      // Cumulative (K) quizzes belong to no class, which a job needs; grading them comes with M8.
-      logger.debug?.({ quizId, submissionId }, "quiz without a class is not graded yet");
+    const classId = gradingClassId(db, owner);
+    if (classId === null) {
+      logger.debug?.({ quizId, submissionId }, "quiz has no class to grade in");
       return;
     }
-    const classId = owner.classId;
     const jobId = db.transaction((tx) => insertGradingJob(tx, classId, submissionId, null));
     startJob(jobId, classId, submissionId);
   }
