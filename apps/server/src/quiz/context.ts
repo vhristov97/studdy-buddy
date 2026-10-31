@@ -37,7 +37,10 @@ export interface EarlierLesson {
   lessonMd: string;
 }
 
-/** How many earlier classes (the most recent ones with repeat candidates) feed repeat questions. */
+/**
+ * How many earlier classes (the most recent ones with weak topics) feed repeat questions; classes
+ * with backlog topics are always added on top of that.
+ */
 export const MAX_EARLIER_LESSONS = 3;
 
 /** Everything the quiz planner (and, in part, the builder and reviewer) needs about one class. */
@@ -50,8 +53,9 @@ export interface QuizContext {
   /** Topics of this class, in lesson order. */
   topics: QuizTopicInput[];
   /**
-   * Weak topics of earlier classes (rated ✗ or ~, or with misconception history): repeat
-   * candidates. Only from the classes in `earlierLessons`.
+   * Weak topics of earlier classes (rated ✗ or ~, or with misconception history) plus every
+   * unresolved backlog topic of an earlier class: repeat candidates. Only from the classes in
+   * `earlierLessons`.
    */
   earlierTopics: (QuizTopicInput & { classNumber: number })[];
   /**
@@ -116,20 +120,33 @@ export function loadQuizContext(db: Db, classId: number): QuizContext {
     .where(and(eq(classTable.courseId, row.cls.courseId), lt(classTable.number, row.cls.number)))
     .orderBy(asc(classTable.number))
     .all();
-  const withCandidates: {
+  // Unresolved backlog items must be coverable as repeats, weak or not.
+  const backlog = loadBacklog(db, row.cls.courseId);
+  const backlogKeys = new Set(backlog.map((b) => JSON.stringify([b.topic, b.classNumber])));
+  const candidatesOf: {
     cls: (typeof earlierClasses)[number];
     lesson: LessonView;
     topics: QuizTopicInput[];
+    hasBacklog: boolean;
   }[] = [];
   for (const earlier of earlierClasses) {
     const view = getLessonView(db, earlier.id);
     if (!view) continue;
-    const candidates = view.topics.map(toTopicInput).filter(isRepeatCandidate);
-    if (candidates.length > 0)
-      withCandidates.push({ cls: earlier, lesson: view, topics: candidates });
+    const all = view.topics.map(toTopicInput);
+    const inBacklog = (t: QuizTopicInput) =>
+      backlogKeys.has(JSON.stringify([t.name, earlier.number]));
+    const topics = all.filter((t) => isRepeatCandidate(t) || inBacklog(t));
+    if (topics.length > 0) {
+      candidatesOf.push({ cls: earlier, lesson: view, topics, hasBacklog: topics.some(inBacklog) });
+    }
   }
-  // Every candidate keeps its lesson: only the most recent classes with candidates are used.
-  const recent = withCandidates.slice(-MAX_EARLIER_LESSONS);
+  // Every candidate keeps its lesson. Classes with backlog topics are always kept (the limit is
+  // raised for them); the remaining slots go to the most recent classes with weak topics.
+  const backlogClasses = candidatesOf.filter((c) => c.hasBacklog);
+  const plainSlots = Math.max(0, MAX_EARLIER_LESSONS - backlogClasses.length);
+  const plain = candidatesOf.filter((c) => !c.hasBacklog);
+  const keptPlain = plainSlots === 0 ? [] : plain.slice(-plainSlots);
+  const recent = [...backlogClasses, ...keptPlain].sort((x, y) => x.cls.number - y.cls.number);
   const earlierTopics: QuizContext["earlierTopics"] = recent.flatMap((c) =>
     c.topics.map((t) => ({ ...t, classNumber: c.cls.number })),
   );
@@ -151,7 +168,7 @@ export function loadQuizContext(db: Db, classId: number): QuizContext {
     topics: lesson.topics.map(toTopicInput),
     earlierTopics,
     earlierLessons,
-    backlog: loadBacklog(db, row.cls.courseId),
+    backlog,
     observations: loadObservations(db),
   };
 }

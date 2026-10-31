@@ -51,6 +51,21 @@ const bad: [string, () => QuizPlan, string][] = [
     "earlier class, so isRepeat must be true",
   ],
   [
+    "repeat without classNumber",
+    () => mutated((p) => void (p.questions[5]!.classNumber = null)),
+    'q6: a repeat must set classNumber to the class the topic "Skladišta podataka" comes from. Valid (topic, class) pairs: ("Skladišta podataka", predavanje 1)',
+  ],
+  [
+    "repeat with the wrong classNumber",
+    () => mutated((p) => void (p.questions[5]!.classNumber = 3)),
+    'topic "Skladišta podataka" is not an earlier topic of predavanje 3. Valid (topic, class) pairs: ("Skladišta podataka", predavanje 1)',
+  ],
+  [
+    "classNumber on a non-repeat",
+    () => mutated((p) => void (p.questions[1]!.classNumber = 1)),
+    "classNumber must be null when isRepeat is false",
+  ],
+  [
     "mc option count out of range",
     () => mutated((p) => void (p.questions[0]!.mcOptionCount = 6)),
     "mcOptionCount must be an integer from 3 to 5",
@@ -281,6 +296,20 @@ describe("quizPlanSchema", () => {
         p.questions[5]!.topic = "Stream obrada";
       });
       expect(issuesOf(plan, sharedCtx())).toBe("");
+    });
+
+    it("tells repeats of two earlier classes with the same topic name apart by classNumber", () => {
+      const ctx = sharedCtx();
+      ctx.earlierTopics.push({ ...ctx.earlierTopics[0]!, classNumber: 3 });
+      const plan = (n: number) =>
+        mutated((p) => {
+          p.questions[5]!.classNumber = n;
+        });
+      expect(issuesOf(plan(1), ctx)).toBe("");
+      expect(issuesOf(plan(3), ctx)).toBe("");
+      const wrong = issuesOf(plan(2), ctx);
+      expect(wrong).toContain("is not an earlier topic of predavanje 2");
+      expect(wrong).toContain('("Skladišta podataka", predavanje 3)');
     });
 
     it("still rejects isRepeat true on a name that is only a current topic", () => {

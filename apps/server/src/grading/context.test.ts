@@ -27,6 +27,9 @@ let sub2: number;
 let subNoPlan: number;
 let subK: number;
 let subSameName: number;
+let subLegacy: number;
+let subExact: number;
+let subExact2: number;
 
 const answers: SubmissionAnswers = {
   q1: 1,
@@ -166,9 +169,49 @@ beforeAll(() => {
   sameName.questions[5]!.topic = "Batch obrada";
   const samePlan = planFixture();
   samePlan.questions[5]!.topic = "Batch obrada";
+  samePlan.questions[5]!.classNumber = 1;
   const sameNameQuiz = addQuiz(courseId, class2, "P02S", sameName);
   addPlan(class2, sameNameQuiz, samePlan);
   subSameName = addSubmission(sameNameQuiz, sameName);
+
+  // A plan stored before classNumber existed: the field is missing, the heuristic applies.
+  const legacy = quizFixture();
+  legacy.code = "P02L";
+  const legacyPlan = planFixture();
+  for (const q of legacyPlan.questions) delete (q as { classNumber?: unknown }).classNumber;
+  const legacyQuiz = addQuiz(courseId, class2, "P02L", legacy);
+  addPlan(class2, legacyQuiz, legacyPlan);
+  subLegacy = addSubmission(legacyQuiz, legacy);
+
+  // Two earlier classes share a topic name; the plan's classNumber picks the older one although
+  // the heuristic would pick the most recent.
+  const course2 = db.insert(course).values({ name: "Drugi kurs" }).returning().get().id;
+  const c2class1 = addClass(course2, 1, "Prvo");
+  const c2class2 = addClass(course2, 2, "Drugo");
+  const c2class3 = addClass(course2, 3, "Treće");
+  addTopic(course2, c2class1, 0, "Deljena tema");
+  addTopic(course2, c2class2, 0, "Deljena tema");
+  addTopic(course2, c2class3, 0, "Batch obrada");
+  const exact = quizFixture();
+  exact.code = "P03";
+  exact.questions = [
+    { ...exact.questions[0]!, topic: "Batch obrada" },
+    { ...exact.questions[5]!, id: "q6", topic: "Deljena tema" },
+  ];
+  const exactPlan = planFixture();
+  exactPlan.questions = [
+    exactPlan.questions[0]!,
+    { ...exactPlan.questions[5]!, topic: "Deljena tema", classNumber: 1 },
+  ];
+  exactPlan.leftOut = [];
+  const exactQuiz = addQuiz(course2, c2class3, "P03", exact);
+  addPlan(c2class3, exactQuiz, exactPlan);
+  subExact = addSubmission(exactQuiz, exact);
+  const exactPlan2 = structuredClone(exactPlan);
+  exactPlan2.questions[1]!.classNumber = 2;
+  const exactQuiz2 = addQuiz(course2, c2class3, "P03B", { ...exact, code: "P03B" });
+  addPlan(c2class3, exactQuiz2, exactPlan2);
+  subExact2 = addSubmission(exactQuiz2, exact);
 });
 
 afterAll(() => {
@@ -280,6 +323,22 @@ describe("loadGradingContext", () => {
     expect(ctx.questionTopics.find((t) => t.questionId === "q6")).toEqual({
       questionId: "q6",
       topic: "Batch obrada",
+      classNumber: 1,
+    });
+  });
+
+  it("uses the plan's classNumber to pick the topic when two earlier classes share its name", () => {
+    const pick = (id: number) =>
+      loadGradingContext(handle.db, id).questionTopics.find((t) => t.questionId === "q6");
+    expect(pick(subExact)).toEqual({ questionId: "q6", topic: "Deljena tema", classNumber: 1 });
+    expect(pick(subExact2)).toEqual({ questionId: "q6", topic: "Deljena tema", classNumber: 2 });
+  });
+
+  it("falls back to the most-recent-class heuristic for plans without classNumber", () => {
+    const ctx = loadGradingContext(handle.db, subLegacy);
+    expect(ctx.questionTopics.find((t) => t.questionId === "q6")).toEqual({
+      questionId: "q6",
+      topic: "Skladišta podataka",
       classNumber: 1,
     });
   });

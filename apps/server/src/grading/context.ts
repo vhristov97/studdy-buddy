@@ -163,11 +163,24 @@ export function loadGradingContext(db: Db, submissionId: number): GradingContext
     .filter((c) => (currentClass ? c.number < currentClass.number : true))
     .reverse(); // most recent first
 
-  /** The topic row for a name: the current class first, repeats prefer earlier classes. */
+  /**
+   * The topic row for a name. A repeat with the plan's class number is looked up in exactly that
+   * class; otherwise (plans from before the class number existed, or no match) the current class
+   * comes first and repeats prefer the most recent earlier classes.
+   */
   const resolveTopic = (
     name: string,
     isRepeat: boolean,
+    repeatClassNumber: number | null = null,
   ): { entry: ClassEntry; topic: QuizTopicInput } | undefined => {
+    if (isRepeat && repeatClassNumber !== null) {
+      const cls = earlier.find((c) => c.number === repeatClassNumber);
+      if (cls) {
+        const entry = entryOf(cls);
+        const found = entry.view?.topics.find((t) => t.name === name);
+        if (found) return { entry, topic: toTopicInput(found) };
+      }
+    }
     const order = currentClass
       ? isRepeat
         ? [...earlier, currentClass]
@@ -187,8 +200,10 @@ export function loadGradingContext(db: Db, submissionId: number): GradingContext
   if (currentClass) lessonClasses.set(currentClass.id, entryOf(currentClass));
 
   for (const q of full.quiz.questions) {
-    const isRepeat = plan?.questions.find((p) => p.id === q.id)?.isRepeat ?? false;
-    const resolved = resolveTopic(q.topic, isRepeat);
+    const planQuestion = plan?.questions.find((p) => p.id === q.id);
+    const isRepeat = planQuestion?.isRepeat ?? false;
+    // Plans stored before classNumber existed lack the field.
+    const resolved = resolveTopic(q.topic, isRepeat, planQuestion?.classNumber ?? null);
     if (!resolved) continue;
     const { entry, topic } = resolved;
     questionTopics.push({ questionId: q.id, topic: topic.name, classNumber: entry.number });

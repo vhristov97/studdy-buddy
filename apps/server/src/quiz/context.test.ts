@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { ctxFixture, planFixture } from "../agents/testing/quiz-fixtures.js";
+import { quizPlanSchema } from "../agents/quiz-planner.js";
 import { migrate, openDatabase, type DatabaseHandle } from "../db/client.js";
 import {
   backlogItem,
@@ -21,6 +23,8 @@ let class1: number;
 let class2: number;
 let class3: number;
 let limitClass: number;
+let backlogClass3: number;
+let backlogClass5: number;
 
 function addClass(courseId: number, number: number, withLesson: boolean): number {
   const { db } = handle;
@@ -129,6 +133,23 @@ beforeAll(() => {
     addTopic(c2.id, id, 0, `Tema ${n}`, n <= 4 ? "✗" : "✓");
   }
   limitClass = addClass(c2.id, 6, true);
+
+  // Backlog courses: class 1 has an untested topic without history that sits on the backlog.
+  const withBacklog = (name: string, weakClasses: number[], targetNumber: number): number => {
+    const bc = db.insert(course).values({ name }).returning().get();
+    const first = addClass(bc.id, 1, true);
+    const leftOut = addTopic(bc.id, first, 0, "Neocenjena tema", "?");
+    db.insert(backlogItem)
+      .values({ courseId: bc.id, topicId: leftOut, dueQuiz: "K1", reason: "left_out" })
+      .run();
+    for (let n = 2; n < targetNumber; n++) {
+      const id = addClass(bc.id, n, true);
+      if (weakClasses.includes(n)) addTopic(bc.id, id, 0, `Slaba ${n}`, "✗");
+    }
+    return addClass(bc.id, targetNumber, true);
+  };
+  backlogClass3 = withBacklog("Kurs 3", [], 3);
+  backlogClass5 = withBacklog("Kurs 4", [2, 3, 4], 5);
 });
 
 afterAll(() => {
@@ -187,7 +208,7 @@ describe("loadQuizContext", () => {
       { topic: "Druga tema", classNumber: 2, dueQuiz: "K2", reason: "gap" },
     ]);
     expect(ctx.observations).toEqual(["Prva", "Druga"]);
-    db.delete(backlogItem).run();
+    db.delete(backlogItem).where(eq(backlogItem.courseId, c.id)).run();
     db.delete(learnerObservation).run();
   });
 
@@ -226,6 +247,40 @@ describe("loadQuizContext", () => {
       [2, "Tema 2"],
       [3, "Tema 3"],
       [4, "Tema 4"],
+    ]);
+  });
+
+  it("offers an unresolved backlog topic from an earlier class as a repeat candidate, weak or not", () => {
+    const ctx = loadQuizContext(handle.db, backlogClass3);
+    expect(ctx.earlierTopics).toEqual([
+      {
+        classNumber: 1,
+        name: "Neocenjena tema",
+        rating: "?",
+        deferred: false,
+        deferredNote: null,
+        history: [],
+      },
+    ]);
+    expect(ctx.earlierLessons).toEqual([
+      { classNumber: 1, title: "Predavanje 1", lessonMd: "Lekcija 1" },
+    ]);
+    // A plan repeating it with classNumber 1 validates against the planner's schema.
+    const plannerCtx = ctxFixture({ earlierTopics: ctx.earlierTopics });
+    const plan = planFixture();
+    plan.questions[5]!.topic = "Neocenjena tema";
+    plan.questions[5]!.classNumber = 1;
+    const result = quizPlanSchema(plannerCtx).safeParse(plan);
+    expect(result.success).toBe(true);
+  });
+
+  it("keeps backlog classes when trimming to the lesson limit; weak classes fill the rest", () => {
+    const ctx = loadQuizContext(handle.db, backlogClass5);
+    expect(ctx.earlierLessons.map((l) => l.classNumber)).toEqual([1, 3, 4]);
+    expect(ctx.earlierTopics.map((t) => [t.classNumber, t.name])).toEqual([
+      [1, "Neocenjena tema"],
+      [3, "Slaba 3"],
+      [4, "Slaba 4"],
     ]);
   });
 

@@ -87,6 +87,7 @@ function plannedQuestion(
     extra: false,
     targetsMisconception: null,
     isRepeat: false,
+    classNumber: null,
     ...extra,
   };
 }
@@ -110,7 +111,11 @@ export function planFixture(): QuizPlan {
       mc(3, "Stream obrada", 0),
       plannedQuestion(4, "num", "Batch obrada", { answer: "12 min" }),
       plannedQuestion(5, "match", "Stream obrada"),
-      mc(6, "Skladišta podataka", 3, { isRepeat: true, ref: "Predavanje 1 › Skladišta podataka" }),
+      mc(6, "Skladišta podataka", 3, {
+        isRepeat: true,
+        classNumber: 1,
+        ref: "Predavanje 1 › Skladišta podataka",
+      }),
       plannedQuestion(7, "open", "Batch obrada"),
       plannedQuestion(8, "open", "Stream obrada"),
     ],
