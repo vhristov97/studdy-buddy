@@ -96,8 +96,11 @@ describe("vizSuggestionsSchema", () => {
     expect(issuesOf(vizSuggestionsFixture())).toBe("");
   });
 
-  it("rejects an empty list and empty fields", () => {
-    expect(issuesOf({ suggestions: [] })).not.toBe("");
+  it("accepts an empty list (nothing benefits from a visualization)", () => {
+    expect(issuesOf({ suggestions: [] })).toBe("");
+  });
+
+  it("rejects empty fields", () => {
     expect(issuesOf(withSuggestions(vizSuggestionFixture({ summary: " " })))).not.toBe("");
     expect(issuesOf(withSuggestions(vizSuggestionFixture({ section: "" })))).not.toBe("");
   });
@@ -168,6 +171,14 @@ describe("identifyVizTopics", () => {
       "Sharding pod lupom",
       "Lambda u pokretu",
     ]);
+    expect(runner.calls.length - before).toBe(1);
+  });
+
+  it("accepts an empty list without a repair round", async () => {
+    queue = [fakeJsonAnswer({ suggestions: [] })];
+    const before = (base = runner.calls.length);
+    const result = await identifyVizTopics({ ctx: ctxFixture(), existing: [] });
+    expect(result.suggestions).toEqual([]);
     expect(runner.calls.length - before).toBe(1);
   });
 

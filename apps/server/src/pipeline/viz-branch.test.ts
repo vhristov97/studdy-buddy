@@ -160,6 +160,15 @@ describe("viz branch", () => {
     expect(updates.map((j) => j.status)).toEqual(["running", "succeeded"]);
   });
 
+  it("succeeds with no suggestions when nothing benefits from a visualization", async () => {
+    identify.mockResolvedValueOnce({ suggestions: [] });
+    startBranch();
+    await waitFor(() => finished(1));
+    expect(vizJobs()[0]).toMatchObject({ status: "succeeded", error: null });
+    expect(suggestions()).toEqual([]);
+    expect(classStatus()).toBe("ready");
+  });
+
   it("does not start on lesson.ready when autoStart is off", async () => {
     await t.cleanup();
     t = createTestApp({

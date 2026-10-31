@@ -15,6 +15,7 @@ describe("VisualizationPage", () => {
     expect(frame).toHaveAttribute("src", "/viz/7");
     expect(frame).toHaveAttribute("sandbox", "allow-scripts");
     expect(frame.getAttribute("sandbox")).not.toContain("allow-same-origin");
+    expect(frame.getAttribute("sandbox")).not.toMatch(/allow-top-navigation|allow-popups/);
 
     expect(screen.getByText(/Shard je kopija podataka/)).toBeInTheDocument();
     const open = screen.getByRole("link", { name: "Otvori u novom prozoru" });

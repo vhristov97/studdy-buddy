@@ -32,6 +32,11 @@ export interface VizRouteOptions {
 /**
  * Visualizations are model-written pages, so they run in a sandbox (opaque origin, so no access
  * to the app's cookies, storage or API) with no network access of any kind.
+ *
+ * CSP has no reliable directive that stops a page from navigating its own frame (a plain
+ * `<a href="https://...">` click), so `validateVizHtml` rejecting external links and navigation
+ * APIs is the main guard; the sandbox (no allow-top-navigation / allow-popups) and
+ * `form-action 'none'` are defense in depth.
  */
 export const VIZ_PAGE_HEADERS = {
   "content-type": "text/html; charset=utf-8",

@@ -153,7 +153,7 @@ export function validateVizHtml(html: string): VizReport {
     );
   }
 
-  // http(s):// or // in src/href/poster/action of any tag except a plain <a href> link.
+  // http(s):// or // in src/href/poster/action of any tag. Anchors are handled separately below.
   const attrPattern = new RegExp(
     String.raw`\s(src|href|xlink:href|poster|action|srcset)\s*=\s*["']?\s*${EXTERNAL_URL}`,
     "gi",
@@ -162,13 +162,45 @@ export function validateVizHtml(html: string): VizReport {
     const name = tag[1]!.toLowerCase();
     if (name === "script" || name === "link") continue; // reported above
     for (const attr of tag[0].matchAll(attrPattern)) {
-      if (name === "a" && attr[1]!.toLowerCase() === "href") continue;
+      if (name === "a" || name === "area") {
+        if (attr[1]!.toLowerCase() !== "href") continue;
+        // Clicking it would navigate the sandboxed frame away from the page to an arbitrary site.
+        // CSP has no reliable directive against frame self-navigation, so this check is the
+        // main guard (the serving headers and the iframe sandbox are defense in depth).
+        error(
+          "external_link_anchor",
+          `<${name}> links to an external URL (${tag[0].slice(0, 80)}...); no external links, cite sources as plain text.`,
+        );
+        continue;
+      }
       error(
         "external_resource",
-        `<${name}> references an external URL (${tag[0].slice(0, 80)}...); only plain <a href> links may point outside.`,
+        `<${name}> references an external URL (${tag[0].slice(0, 80)}...); the page must not load external resources.`,
       );
       break external;
     }
+  }
+
+  if (/\bwindow\s*\.\s*open\s*\(/.test(page)) {
+    error(
+      "navigation_api",
+      "window.open() is not allowed; the page must not navigate or open windows.",
+    );
+  }
+  if (
+    /(?<!\b(?:const|let|var)\s+)\blocation\s*(?:\.\s*href\s*)?=(?!=)/.test(page) ||
+    /\blocation\s*\.\s*(?:assign|replace)\s*\(/.test(page)
+  ) {
+    error(
+      "navigation_api",
+      "Assigning location / location.href or calling location.assign() / location.replace() is not allowed; the page must not navigate.",
+    );
+  }
+  if (/<meta\b[^>]*\bhttp-equiv\s*=\s*["']?\s*refresh\b/i.test(page)) {
+    error(
+      "navigation_api",
+      '<meta http-equiv="refresh"> is not allowed; the page must not navigate.',
+    );
   }
 
   const unguarded = [...page.matchAll(/\b(?:localStorage|sessionStorage)\b/g)].filter((m) => {

@@ -262,6 +262,15 @@
   color: var(--color-text);
 }
 
+.vizConcept {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-sm);
+}
+
+.historyItem .muted {
+  margin: var(--space-1) 0 0;
+}
+
 /* Observations */
 .observations {
   margin: var(--space-2) 0 0;

@@ -31,7 +31,7 @@ You receive, in the user message:
 # The page (design contract)
 
 - One HTML file: starts with <!doctype html>, has <meta charset="utf-8"> and <meta name="viewport" content="width=device-width, initial-scale=1">, and a <title> that is exactly the plan's title (2-4 words).
-- Inline CSS and JavaScript only. No external dependencies of any kind: no <script src>, no <link>, no @import, no web fonts, no CDN, no external images (draw with HTML, CSS and inline SVG), no fetch / XMLHttpRequest / WebSocket. The only external URLs allowed are plain <a href> links, and you do not need any.
+- Inline CSS and JavaScript only. No external dependencies of any kind: no <script src>, no <link>, no @import, no web fonts, no CDN, no external images (draw with HTML, CSS and inline SVG), no fetch / XMLHttpRequest / WebSocket. No external links or navigation of any kind: no <a href="http..."> (a click would navigate the frame away from the page), no window.open, no location changes, no <meta http-equiv="refresh">. Links inside the page (href="#...") are fine. Cite sources as plain text.
 - Light and dark themes: define colors as CSS custom properties on :root, and override them in @media (prefers-color-scheme: dark). Both themes must be readable, with sufficient contrast for text and for every colored mark.
 - Works at 390 px width without horizontal scrolling of the page: a fluid layout, wrapping controls, SVG with a viewBox that scales, tables that wrap or scroll inside their own box. It also uses a desktop width well.
 - Respects prefers-reduced-motion: with reduce, no animations or transitions (state changes still show, just instantly).

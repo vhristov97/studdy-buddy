@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resolveApiPort } from "./devProxy";
+import { buildDevProxy, resolveApiPort } from "./devProxy";
 
 describe("resolveApiPort", () => {
   let dir: string;
@@ -38,5 +38,23 @@ describe("resolveApiPort", () => {
     expect(resolveApiPort(dir, {})).toBe("4321");
     fs.rmSync(path.join(dir, ".env"));
     expect(resolveApiPort(dir, {})).toBe("3000");
+  });
+});
+
+describe("buildDevProxy", () => {
+  // Mirrors Vite's matching: keys starting with "^" are RegExps, others are URL prefixes.
+  const matches = (key: string, url: string) =>
+    key.startsWith("^") ? new RegExp(key).test(url) : url.startsWith(key);
+  const proxied = (url: string) =>
+    Object.keys(buildDevProxy("http://127.0.0.1:3000")).some((key) => matches(key, url));
+
+  it("proxies /api and /viz/ paths", () => {
+    expect(proxied("/api/courses")).toBe(true);
+    expect(proxied("/viz/1")).toBe(true);
+    expect(proxied("/viz/1/index.html")).toBe(true);
+  });
+
+  it("leaves the SPA route /vizualizacije/:id to Vite", () => {
+    expect(proxied("/vizualizacije/1")).toBe(false);
   });
 });

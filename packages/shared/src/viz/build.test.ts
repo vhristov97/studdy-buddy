@@ -18,7 +18,7 @@ body { background: var(--bg); color: var(--fg); transition: color 0.2s; }
 <body>
 <button id="add">Dodaj čvor</button>
 <p id="log" aria-live="polite"></p>
-<a href="https://example.com/izvor">Izvor</a>
+<a href="#izvor">Izvor</a>
 <script>
 let saved = null;
 try { saved = localStorage.getItem("x"); } catch (e) { saved = null; }
@@ -121,7 +121,7 @@ describe("validateVizHtml", () => {
     }
   });
 
-  it("rejects external src/href except on plain links", () => {
+  it("rejects external src/href on resource tags", () => {
     for (const tag of [
       '<img src="https://x.test/a.png">',
       '<iframe src="//x.test/"></iframe>',
@@ -132,12 +132,51 @@ describe("validateVizHtml", () => {
         "external_resource",
       );
     }
-    // a plain <a href> is fine, and so are relative and data: URLs and the SVG namespace
+    // relative and data: URLs, fragment links and the SVG namespace are fine
     const fine = VALID_HTML.replace(
       "<button",
-      '<a href="http://example.com">x</a><img src="data:image/png;base64,AAAA"><svg xmlns="http://www.w3.org/2000/svg"></svg><button',
+      '<a href="#dole">x</a><img src="data:image/png;base64,AAAA"><svg xmlns="http://www.w3.org/2000/svg"></svg><button',
     );
     expect(errorsOf(fine)).toEqual([]);
+  });
+
+  it("rejects anchors and areas that link to an external URL", () => {
+    for (const tag of [
+      '<a href="https://example.com/izvor">Izvor</a>',
+      '<a href="http://example.com">x</a>',
+      "<a href=//example.com/x>x</a>",
+      '<a class="s" target="_blank" href=" https://example.com">x</a>',
+      '<area shape="rect" coords="0,0,1,1" href="https://example.com">',
+    ]) {
+      expect(errorsOf(VALID_HTML.replace("<button", `${tag}<button`)), tag).toContain(
+        "external_link_anchor",
+      );
+    }
+  });
+
+  it("rejects navigation APIs and meta refresh", () => {
+    for (const code of [
+      'window.open("https://x.test")',
+      'location.href = "https://x.test"',
+      'window.location.href="https://x.test"',
+      'location = "https://x.test"',
+      'document.location.assign("https://x.test")',
+      'top.location.replace("https://x.test")',
+    ]) {
+      const html = VALID_HTML.replace("let saved = null;", `${code}; let saved = null;`);
+      expect(errorsOf(html), code).toContain("navigation_api");
+    }
+    const refresh = VALID_HTML.replace(
+      "<style>",
+      '<meta http-equiv="refresh" content="0;url=https://x.test"><style>',
+    );
+    expect(errorsOf(refresh)).toContain("navigation_api");
+    // reading location or comparing it is fine
+    const ok = VALID_HTML.replace(
+      "let saved = null;",
+      'const here = window.location.href; if (location.hash == "#a") {} let saved = null;',
+    );
+    expect(errorsOf(ok)).toEqual([]);
   });
 
   it("ignores forbidden tags inside HTML comments", () => {

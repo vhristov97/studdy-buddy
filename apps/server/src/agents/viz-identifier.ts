@@ -38,7 +38,7 @@ Recommend only concepts that are genuinely easier to grasp by interacting than b
 
 Prefer concepts tied to a misconception: one the student's notes contained, or one that shows up in the tracking history (a wrong quiz or grading outcome, a topic rated ✗ or ~). The best visualization is one where the wrong mental model visibly predicts one thing and the visualization shows another.
 
-Be selective. Two to four suggestions is typical, five at most. If only one concept truly deserves a visualization, recommend one. Never pad the list to look thorough. Never recommend a concept that is already in the list of existing ones, or the same idea under another name.
+Be selective. Two to four suggestions is typical, five at most. If only one concept truly deserves a visualization, recommend one. Never pad the list to look thorough. If nothing in the lesson genuinely benefits from an interactive visualization, return an empty list ({"suggestions": []}); that is a valid, correct answer. Never recommend a concept that is already in the list of existing ones, or the same idea under another name.
 
 # One suggestion
 
@@ -57,7 +57,7 @@ Write every text field in Serbian, Latin script, with correct diacritics (č, ć
 
 # Self-check before answering
 
-Every concept is unique and not already existing. Each suggestion has a lesson section, a misconception in the "wrong model predicts X; the visualization shows Y" form, 2-5 controls and 2-4 scenarios with end states. No summary gives away a quiz answer. The list has at most ${MAX_VIZ_SUGGESTIONS} entries and no padding.
+Every concept is unique and not already existing. Each suggestion has a lesson section, a misconception in the "wrong model predicts X; the visualization shows Y" form, 2-5 controls and 2-4 scenarios with end states. No summary gives away a quiz answer. The list has at most ${MAX_VIZ_SUGGESTIONS} entries and no padding; it is empty when nothing deserves a visualization.
 
 # Output
 

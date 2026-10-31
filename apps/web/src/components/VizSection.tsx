@@ -184,9 +184,11 @@ export function VizSection({ classId, compact = false, classPath }: Props) {
         </>
       )}
 
-      {all.length === 0 && !identifying && topicsJob?.status === "succeeded" && (
-        <EmptyState message="Nema predloženih tema. Dodaj svoju." />
-      )}
+      {!all.some((item) => item.origin === "agent") &&
+        !identifying &&
+        topicsJob?.status === "succeeded" && (
+          <EmptyState message="Za ovu lekciju nema predloga za vizualizacije." />
+        )}
 
       {compact ? (
         classPath && (

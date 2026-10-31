@@ -684,6 +684,7 @@ describe("grading branch", () => {
         backlog: [],
         topics: [],
         quizHistory: [],
+        visualizations: [],
         observations: [],
         flags: { classesWithoutLesson: [], ungradedSubmissions: [] },
       });

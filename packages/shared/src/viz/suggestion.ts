@@ -19,7 +19,8 @@ export type VizSuggestionDraft = z.infer<typeof VizSuggestionDraft>;
 
 export const MAX_VIZ_SUGGESTIONS = 5;
 
+/** 0..MAX_VIZ_SUGGESTIONS (max enforced by the identifier's refinement): an empty list means nothing benefits. */
 export const VizSuggestions = z.object({
-  suggestions: z.array(VizSuggestionDraft).min(1),
+  suggestions: z.array(VizSuggestionDraft),
 });
 export type VizSuggestions = z.infer<typeof VizSuggestions>;

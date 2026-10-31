@@ -83,6 +83,17 @@ describe("VizSection (class page)", () => {
     expect(await view.findByRole("button", { name: "Predloži teme" })).toBeInTheDocument();
   });
 
+  it("says there are no suggestions after a succeeded job and still offers own topics", async () => {
+    setup({ jobs: [topicsJob()] });
+    renderAt("/predavanja/5");
+    const view = await section();
+    expect(
+      await view.findByText("Za ovu lekciju nema predloga za vizualizacije."),
+    ).toBeInTheDocument();
+    expect(view.getByRole("heading", { name: "Dodaj svoju temu" })).toBeInTheDocument();
+    expect(view.getByRole("button", { name: "Dodaj temu" })).toBeInTheDocument();
+  });
+
   it("selects suggestions and builds only the checked ones", async () => {
     const { requests } = setup(
       {

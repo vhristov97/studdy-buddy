@@ -17,3 +17,15 @@ export function resolveApiPort(
   const fileEnv = fs.existsSync(envPath) ? parseEnv(fs.readFileSync(envPath, "utf8")) : {};
   return processEnv.PORT || fileEnv.PORT || DEFAULT_API_PORT;
 }
+
+/**
+ * Dev proxy table. Vite treats keys starting with `^` as RegExp and plain keys as prefixes, so
+ * `/viz` would also swallow the SPA route `/vizualizacije/:id`; `^/viz/` forwards only real
+ * visualization asset paths (and `/api/` stays a plain prefix).
+ */
+export function buildDevProxy(target: string): Record<string, string> {
+  return {
+    "/api": target,
+    "^/viz/": target,
+  };
+}
