@@ -141,8 +141,20 @@ Opus checks every task with `npm run typecheck && npm run lint && npm test`, rea
 
 State and context a fresh session needs. Keep this section current at every milestone boundary.
 
-### Where things stand (after M4, merged in PR #9)
-- **Done**: M0–M4. Next: **M5 on branch `m5-player`** (already created from `main`). M7 (viz branch) is also unblocked.
+### Where things stand (after M5, merged in PR #10)
+- **Done**: M0–M5.
+- **Next, in parallel** (the user's decision):
+  - **M6** on branch `m6-grading` in this checkout;
+  - **M7** on branch `m7-viz` in the git worktree `../studdy-buddy-m7`, which has its own `node_modules` and a copy of `.env`.
+- **Same workflow for both**: Opus plans and verifies, Sonnet implements, and each branch gets its own PR and Devin loop.
+- **Merge order**: M6 merges first. Then M7 rebases on `main`; on a migration conflict, delete M7's migration, re-run `npm run db:generate` on top of `main`'s, and re-test.
+- **Shared files likely to conflict** (keep edits small there): `db/schema.ts`, `pipeline/events.ts`, `JOB_KINDS`, `lib/pipeline.ts`, `PipelinePanel`, `docs/PLAN.md` checkboxes and `README.md`.
+- **M7 real-API runs**: the worktree's `DATA_DIR` defaults to its own empty `./data`. For runs on class 01, point `DATA_DIR` at a copy of this checkout's `data/`.
+- **Player and submissions (M5)**:
+  - `GET /api/quizzes/:id` returns `PublicQuiz` (no answers).
+  - `POST /api/quizzes/:id/submissions` scores on the server with the shared `scoreQuiz`, rejects empty submissions, stores a `submission` row (`answers_json`, `results_json`, `dont_know_json`, `auto_score`/`auto_max`, `open_pending`), emits **`submission.created` `{quizId, submissionId}`** (M6 grading starts from this), and returns feedback.
+  - `GET /api/submissions/:id` returns the detail. The player is `/kvizovi/:quizId`, with read-only past submissions at `/kvizovi/:quizId/predaje/:submissionId`.
+  - Numeric scoring: tolerance 0 means an exact match.
 - **Quiz layer (M4)**:
   - Shared (`packages/shared/src/quiz/`): `Quiz`/`Question` (`mc`/`num`/`match`/`open`), `QuizPlan`, `QuizDraft`, `QuizReview`, `validateQuiz`, `lessonQuizCode`.
   - Server: `pipeline/quiz-branch.ts` runs on `lesson.ready`: plan → build → review, with ≤3 fix rounds on one builder session, then release or fail. It emits `quiz.released` `{classId, quizId, code}`.
