@@ -7,6 +7,7 @@ import { config } from "../config.js";
 import {
   buildQuizPlannerInstruction,
   buildQuizPlannerMessage,
+  normalizeQuizPlan,
   planQuiz,
   quizPlanSchema,
   quizPlannerSpec,
@@ -120,11 +121,6 @@ const bad: [string, () => QuizPlan, string][] = [
     "closed with key points",
     () => mutated((p) => void (p.questions[1]!.keyPoints = ["tačka"])),
     "keyPoints must be empty for a mc question",
-  ],
-  [
-    "typeMix mismatch",
-    () => mutated((p) => void (p.typeMix.mc = 5)),
-    "typeMix.mc is 5 but the questions contain 4",
   ],
   [
     "deferred topic",
@@ -300,6 +296,13 @@ describe("quizPlanSchema", () => {
 
   it.each(bad)("rejects %s", (_label, make, expected) => {
     expect(issuesOf(make())).toContain(expected);
+  });
+
+  it("accepts a mismatched typeMix; normalizeQuizPlan recomputes it from the questions", () => {
+    const plan = mutated((p) => void (p.typeMix.mc = 5));
+    expect(issuesOf(plan)).toBe("");
+    expect(normalizeQuizPlan(plan)).toEqual(planFixture());
+    expect(normalizeQuizPlan(plan).typeMix).toEqual({ mc: 4, num: 1, match: 1, open: 2 });
   });
 
   it("does not apply the mc bias check below four mc questions", () => {
@@ -594,9 +597,9 @@ describe("cumulative review (K) planning", () => {
     ).toContain("closed question after an open question");
   });
 
-  it("still checks the code, the typeMix and the mc positions", () => {
+  it("still checks the code, and accepts a mismatched typeMix", () => {
     expect(kIssues(kMutated((p) => void (p.code = "K9")))).toContain('quiz code must be "K1"');
-    expect(kIssues(kMutated((p) => void (p.typeMix.mc = 9)))).toContain("typeMix.mc is 9");
+    expect(kIssues(kMutated((p) => void (p.typeMix.mc = 9)))).toBe("");
   });
 
   it("builds a message from the lessons, topics, due backlog and observations", () => {
@@ -653,6 +656,12 @@ describe("planQuiz with FakeRunner (no API)", () => {
     await expect(planQuiz(ctxFixture())).resolves.toEqual(planFixture());
     expect(inner.calls).toHaveLength(1);
     expect(inner.calls[0]!.model).toBe(config.MODEL_PLANNER);
+  });
+
+  it("corrects a typeMix that is off by one without a repair call", async () => {
+    queue = [fakeJsonAnswer(mutated((p) => void (p.typeMix.mc = 5)))];
+    await expect(planQuiz(ctxFixture())).resolves.toEqual(planFixture());
+    expect(inner.calls).toHaveLength(1);
   });
 
   it.each(bad.map(([label, make]) => [label, make] as const))(

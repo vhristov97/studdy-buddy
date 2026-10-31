@@ -74,13 +74,13 @@ Questions must stay inside the lesson. Never plan a question whose answer you ca
 - subtitle: for example "Predavanje 3 · kratki test";
 - chips: short labels such as the source deck or class ("ASVSP · Predavanje 1"), "N pitanja", "~M min";
 - lessonsToRead: what the student should read before the quiz (for example the lesson title);
-- targetMinutes and typeMix: typeMix counts must equal the questions you list, per type;
+- targetMinutes and typeMix: give your best estimate of the per-type counts; the app recomputes typeMix from your questions, so do not spend effort on it;
 - weightingRationale: a short explanation of the weighting (what got most questions and why, which misconceptions are targeted, what is a repeat).
 The code must be exactly the code given in the user message.
 
 # Self-check before answering
 
-Count the questions per type and make sure typeMix matches. Check the ids, the order (closed, then repeats, then open), that every topic name is copied exactly, that every listed notes misconception is targeted by its own question with the text copied exactly, that no deferred topic is tested, and that the mc correct indices are varied.
+Check the ids, the order (closed, then repeats, then open), that every topic name is copied exactly, that every listed notes misconception is targeted by its own question with the text copied exactly, that no deferred topic is tested, and that the mc correct indices are varied.
 
 # Output
 
@@ -145,13 +145,13 @@ Questions must stay inside the lessons. Never plan a question whose answer you c
 - subtitle: for example "Predavanja 1-4 · kumulativni test";
 - chips: short labels such as the course, "N pitanja", "~M min";
 - lessonsToRead: what the student should read before the review (the covered lessons);
-- targetMinutes and typeMix: typeMix counts must equal the questions you list, per type;
+- targetMinutes and typeMix: give your best estimate of the per-type counts; the app recomputes typeMix from your questions, so do not spend effort on it;
 - weightingRationale: a short explanation of the weighting (which backlog items are covered, what is weak and got most questions, how the classes are spread).
 The code must be exactly the code given in the user message.
 
 # Self-check before answering
 
-Count the questions per type and make sure typeMix matches. Check the ids, the order (closed, then open), that every row is a repeat with classNumber, that every ref starts with "Predavanje <classNumber> ›", that every topic name is copied exactly, that every due backlog item is covered by a question on its topic and class, that no deferred topic is tested, and that the mc correct indices are varied.
+Check the ids, the order (closed, then open), that every row is a repeat with classNumber, that every ref starts with "Predavanje <classNumber> ›", that every topic name is copied exactly, that every due backlog item is covered by a question on its topic and class, that no deferred topic is tested, and that the mc correct indices are varied.
 
 # Output
 
@@ -402,10 +402,8 @@ export function quizPlanSchema(ctx: QuizContext): z.ZodType<QuizPlan> {
       issue(`The quiz code must be "${ctx.code}", not "${plan.code}".`, ["code"]);
     }
 
-    const counts = { mc: 0, num: 0, match: 0, open: 0 };
     plan.questions.forEach((q, i) => {
       const at = (field: string): (string | number)[] => ["questions", i, field];
-      counts[q.type]++;
 
       if (q.id !== `q${i + 1}`) {
         issue(
@@ -539,17 +537,6 @@ export function quizPlanSchema(ctx: QuizContext): z.ZodType<QuizPlan> {
       }
     });
 
-    for (const type of ["mc", "num", "match", "open"] as const) {
-      if (plan.typeMix[type] !== counts[type]) {
-        issue(
-          `typeMix.${type} is ${plan.typeMix[type]} but the questions contain ${counts[type]} ` +
-            `${type} question(s). Set typeMix to mc ${counts.mc}, num ${counts.num}, ` +
-            `match ${counts.match}, open ${counts.open}.`,
-          ["typeMix", type],
-        );
-      }
-    }
-
     // Coverage is keyed by (topic, misconception): only a non-repeat mc or match question on the
     // topic counts, because the misconception must be a distractor and only those have distractors.
     const targeted = new Set(
@@ -656,6 +643,15 @@ export function quizPlannerSpec(
   };
 }
 
+/** typeMix is redundant with the questions; the planner often miscounts it, so recompute it. */
+export function normalizeQuizPlan(plan: QuizPlan): QuizPlan {
+  const typeMix = { mc: 0, num: 0, match: 0, open: 0 };
+  for (const q of plan.questions) typeMix[q.type]++;
+  return { ...plan, typeMix };
+}
+
 export async function planQuiz(ctx: QuizContext, opts: QuizPlannerOptions = {}): Promise<QuizPlan> {
-  return runStage(quizPlannerSpec(ctx, opts), buildQuizPlannerMessage(ctx));
+  return normalizeQuizPlan(
+    await runStage(quizPlannerSpec(ctx, opts), buildQuizPlannerMessage(ctx)),
+  );
 }
