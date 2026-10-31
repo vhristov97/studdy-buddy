@@ -17,7 +17,7 @@ You receive, in the user message:
 - the unified lesson note (inside <lekcija>), which is the source of truth. Its item tags: no tag = from the slides; (P) = the lecturer's spoken remark, authoritative and likely exam material; (D) = an addition by the lesson's author (the tutor). "> ⚠️ Ispravka:" callouts mark corrections of the student's notes;
 - the topics of this class, in lesson order, each with its rating (? = untested, ✗ = not understood, ~ = partly, ✓ = understood) and its history: misconceptions the student's notes contained (source "notes"), and how earlier quizzes and grading went (sources "quiz" and "grading"). Deferred topics are marked;
 - topics of earlier classes that are still weak (repeat candidates), with their history, and the lessons of those earlier classes (each inside <ranija_lekcija>, with its class number), which are the source for repeat questions;
-- the backlog (topics that were left out of earlier quizzes and are due) and observations about the student, when there are any.
+- the backlog (topics that were left out of earlier quizzes and are due; deferred ones are marked and are not tested) and observations about the student, when there are any.
 
 # Language
 
@@ -39,9 +39,10 @@ Decide how many questions each topic gets and from which angle:
 - Topics answered correctly come back harder: application in a scenario, edge cases, comparison with a neighbouring concept.
 - Every misconception from the student's notes (history source "notes") gets at least one question in which that misconception is the main distractor. That question must be a multiple-choice (mc) question, or a matching (match) question where it fits: only closed questions with options have distractors, so num and open questions do not count. The message lists these misconceptions explicitly, numbered per topic. Set targetsMisconception on that row to the misconception text copied exactly (character for character) from that list. Every listed misconception needs its own question on that same topic (topic set to that topic's name, isRepeat false, type mc or match; a question on another topic, a repeat, a num or an open question does not count): two misconceptions on one topic need two questions. The answer to such a row is the correction. Rows that are not built around a misconception, and every open row, have targetsMisconception null.
 - Deferred topics (the lecturer promised to cover them later) are NOT tested. List each in leftOut with the reason.
-- Repeats from earlier classes: pick the weakest earlier topics (a handful, about a quarter of the closed questions at most, fewer when there are few). Set isRepeat true on them and use a NEW angle. Base such a question on the earlier lesson (provided inside <ranija_lekcija>) together with the history (the misconception and its correction); never ask what you cannot verify from them. Set ref to "Predavanje <N> › <section path>", where N is the earlier class number and the section path is the heading path in that earlier lesson, separated by " › ".
+- Repeats from earlier classes: pick the weakest earlier topics (a handful, about a quarter of the closed questions at most, fewer when there are few). Set isRepeat true on them, set classNumber to the number of the class that topic comes from (topic names are unique only per class, so the pair topic + classNumber must be one of the listed earlier topics or backlog items, each listed with its class number), and use a NEW angle. Base such a question on the earlier lesson (provided inside <ranija_lekcija>) together with the history (the misconception and its correction); never ask what you cannot verify from them. Set ref to "Predavanje <N> › <section path>", where N is exactly the classNumber of that row (the earlier class number) and the section path is the heading path in that earlier lesson, separated by " › ". A repeat's ref must start with "Predavanje <classNumber> ›" for its own classNumber; a question that is not a repeat never has a ref starting with "Predavanje <N> ›".
 - Topics that do not fit in the quiz go to leftOut, each with a short reason (for example "ostalo bez pitanja zbog obima", "sporedna tema"). They are put on the backlog for the next cumulative review. Do not leave out a topic that has a notes misconception unless it is deferred.
-- Backlog items that are due in this quiz must be covered; treat them like repeats. Observations about the student tell you where to put emphasis (for example that calculations are weak, or that open answers skip enumerations).
+- Deferred backlog items (marked "odloženo") are never tested and never repeats; the lecturer has not covered them yet. Leave them alone.
+- Backlog items that are due in this quiz must be covered; treat them like repeats (isRepeat true, classNumber = the class number listed with the backlog item). Observations about the student tell you where to put emphasis (for example that calculations are weak, or that open answers skip enumerations).
 
 # Order
 
@@ -54,7 +55,7 @@ Question ids are q1, q2, ... qN in exactly this order, with no gaps.
 
 - id: "q1".."qN" in order.
 - type: "mc", "num", "match" or "open".
-- topic: copied exactly (character for character) from a topic name in the user message. Questions about this class use this class's topic names (isRepeat false); repeats use the earlier topic's name (isRepeat true). When a name occurs both in this class and among the earlier topics, either use is valid; isRepeat tells which one you mean.
+- topic: copied exactly (character for character) from a topic name in the user message. Questions about this class use this class's topic names (isRepeat false); repeats use the earlier topic's name (isRepeat true). When a name occurs both in this class and among the earlier topics, either use is valid; isRepeat tells which one you mean, and classNumber tells which earlier class.
 - angle: the scenario or angle in one or two sentences. Prefer a scenario (a team, a system, a command, a failure) to "what is X".
 - answer: the correct answer or key fact, as text. It must be exact and checkable against the lesson. For num: the value and unit. For match: the correct pairs. For open: a one-line summary of the model answer.
 - keyPoints: for open questions, everything a complete oral answer names, including the lecturer's enumerations, examples and analogies (at least 2 points; each a short statement). For all other types an empty list.
@@ -64,6 +65,7 @@ Question ids are q1, q2, ... qN in exactly this order, with no gaps.
 - extra: true when the question rests on (D) content, otherwise false.
 - targetsMisconception: see above, otherwise null.
 - isRepeat: true only for topics of earlier classes.
+- classNumber: for a repeat (isRepeat true) the class number of the earlier topic, exactly as listed with that topic (for example 1 for "predavanje 1"); null when isRepeat is false.
 Questions must stay inside the lesson. Never plan a question whose answer you cannot verify from the lesson (or, for repeats, from the earlier lesson and the history). Where the lesson contains a visible "⚠️ Ispravka" correction, the plan uses the corrected statement, never the wrong wording from the notes. Do not ask about ❓ items the student has not confirmed yet.
 
 # Header
@@ -93,7 +95,7 @@ function quote(text: string): string {
   return `"${text.replace(/\s+/g, " ").trim()}"`;
 }
 
-function formatTopic(topic: QuizTopicInput, index: number, classNumber?: number): string {
+export function formatTopic(topic: QuizTopicInput, index: number, classNumber?: number): string {
   const head = [
     `${index + 1}. ${topic.name}`,
     classNumber !== undefined ? `(predavanje ${classNumber})` : "",
@@ -112,6 +114,11 @@ function formatTopic(topic: QuizTopicInput, index: number, classNumber?: number)
     return `   - ${parts.join("; ")}`;
   });
   return [head, ...lines].join("\n");
+}
+
+/** True when `ref` starts with "Predavanje <classNumber> ›" (a leading zero on the number is fine). */
+function refStartsWithClass(ref: string, classNumber: number): boolean {
+  return new RegExp(`^\\s*Predavanje\\s+0*${classNumber}\\s*›`).test(ref);
 }
 
 /** Normalizes misconception text for comparison: trimmed, whitespace collapsed, case-folded. */
@@ -173,7 +180,13 @@ export function buildQuizPlannerMessage(ctx: QuizContext): string {
     ),
     ctx.backlog.length > 0
       ? "Backlog (obavezno u ovom kvizu ako je dospeo):\n" +
-        ctx.backlog.map((b) => `- ${b.topic} (obavezno u ${b.dueQuiz}): ${b.reason}`).join("\n")
+        ctx.backlog
+          .map((b) =>
+            b.deferred
+              ? `- ${b.topic} (predavanje ${String(b.classNumber).padStart(2, "0")}) (odloženo — ne testirati dok se ne obradi): ${b.reason}`
+              : `- ${b.topic} (predavanje ${String(b.classNumber).padStart(2, "0")}) — obavezno u ${b.dueQuiz}: ${b.reason}`,
+          )
+          .join("\n")
       : "Backlog je prazan.",
     ctx.observations.length > 0
       ? `Zapažanja o studentu:\n${ctx.observations.map((o) => `- ${o}`).join("\n")}`
@@ -190,6 +203,16 @@ export function buildQuizPlannerMessage(ctx: QuizContext): string {
 export function quizPlanSchema(ctx: QuizContext): z.ZodType<QuizPlan> {
   const current = new Map(ctx.topics.map((t) => [t.name, t]));
   const earlierNames = new Set(ctx.earlierTopics.map((t) => t.name));
+  const earlierPairs = new Set(
+    ctx.earlierTopics.map((t) => JSON.stringify([t.name, t.classNumber])),
+  );
+  const validPairs = ctx.earlierTopics
+    .map((t) => `("${t.name}", predavanje ${t.classNumber})`)
+    .join(", ");
+  const deferredBacklog = new Set(
+    ctx.backlog.filter((b) => b.deferred).map((b) => JSON.stringify([b.topic, b.classNumber])),
+  );
+  const deferredBacklogNames = new Set(ctx.backlog.filter((b) => b.deferred).map((b) => b.topic));
   const validNames = [...new Set([...ctx.topics, ...ctx.earlierTopics].map((t) => t.name))];
 
   return QuizPlan.superRefine((plan, zctx) => {
@@ -213,7 +236,19 @@ export function quizPlanSchema(ctx: QuizContext): z.ZodType<QuizPlan> {
         );
       }
 
-      if (!validNames.includes(q.topic)) {
+      if (
+        q.isRepeat &&
+        deferredBacklogNames.has(q.topic) &&
+        (q.classNumber === null
+          ? !earlierNames.has(q.topic)
+          : deferredBacklog.has(JSON.stringify([q.topic, q.classNumber])))
+      ) {
+        issue(
+          `${q.id}: topic "${q.topic}" is a deferred backlog item (the lecturer has not covered it yet), ` +
+            "so it is not a repeat candidate and must not be tested. Remove the question.",
+          at("topic"),
+        );
+      } else if (!validNames.includes(q.topic)) {
         issue(
           `${q.id}: topic "${q.topic}" is not a known topic. Use a name copied exactly from: ` +
             `${validNames.map((n) => `"${n}"`).join(", ")}.`,
@@ -230,6 +265,43 @@ export function quizPlanSchema(ctx: QuizContext): z.ZodType<QuizPlan> {
           issue(
             `${q.id}: topic "${q.topic}" belongs to an earlier class, so isRepeat must be true.`,
             at("isRepeat"),
+          );
+        }
+        if (q.isRepeat && earlierNames.has(q.topic)) {
+          if (q.classNumber === null) {
+            issue(
+              `${q.id}: a repeat must set classNumber to the class the topic "${q.topic}" comes from. ` +
+                `Valid (topic, class) pairs: ${validPairs}.`,
+              at("classNumber"),
+            );
+          } else if (!earlierPairs.has(JSON.stringify([q.topic, q.classNumber]))) {
+            issue(
+              `${q.id}: topic "${q.topic}" is not an earlier topic of predavanje ${q.classNumber}. ` +
+                `Valid (topic, class) pairs: ${validPairs}.`,
+              at("classNumber"),
+            );
+          }
+        }
+        if (q.isRepeat && q.classNumber !== null && !refStartsWithClass(q.ref, q.classNumber)) {
+          issue(
+            `${q.id}: a repeat's ref must start with "Predavanje ${q.classNumber} ›" (the class named ` +
+              `by classNumber ${q.classNumber}), but ref is "${q.ref}". Grading updates the class from ` +
+              "classNumber, so ref and classNumber must name the same class.",
+            at("ref"),
+          );
+        }
+        if (!q.isRepeat && /^\s*Predavanje\s+\d+\s*›/.test(q.ref)) {
+          issue(
+            `${q.id}: ref "${q.ref}" starts with "Predavanje <N> ›", which is only for repeats of ` +
+              "earlier classes. Use a section path of this class's lesson, or set isRepeat to true.",
+            at("ref"),
+          );
+        }
+        if (!q.isRepeat && q.classNumber !== null) {
+          issue(
+            `${q.id}: classNumber must be null when isRepeat is false (it is only set for repeats ` +
+              "of earlier classes).",
+            at("classNumber"),
           );
         }
         if (!q.isRepeat && current.get(q.topic)?.deferred) {

@@ -1,11 +1,13 @@
 import { useId } from "react";
 import {
   DONT_KNOW,
+  type GradingItem,
+  type GradingOpenGrade,
   type PublicQuestion,
   type QuestionFeedback,
   type QuestionResult,
 } from "@studdy/shared";
-import { formatExact } from "../lib/format";
+import { formatDecimal, formatExact } from "../lib/format";
 import {
   getMatchDraft,
   getTextDraft,
@@ -41,6 +43,12 @@ function statusOf(result: QuestionResult): { label: string; tone: Tone } {
   }
 }
 
+/** The status chip of an open question once the grader has scored it. */
+function gradedStatus(grade: GradingOpenGrade): { label: string; tone: Tone } {
+  const tone: Tone = grade.score >= 1 ? "correct" : grade.score <= 0 ? "wrong" : "partial";
+  return { label: `Ocena: ${formatDecimal(grade.score)} / 1`, tone };
+}
+
 interface Props {
   index: number;
   question: PublicQuestion;
@@ -51,6 +59,10 @@ interface Props {
   locked: boolean;
   result?: QuestionResult;
   feedback?: QuestionFeedback;
+  /** The grader's score for an open question (replaces its "waiting" chip). */
+  openGrade?: GradingOpenGrade;
+  /** The grader's classification of what was missed in this question. */
+  gradingItems?: readonly GradingItem[];
 }
 
 export function QuizQuestion({
@@ -61,10 +73,12 @@ export function QuizQuestion({
   locked,
   result,
   feedback,
+  openGrade,
+  gradingItems,
 }: Props) {
   const id = useId();
   const promptId = `${id}-prompt`;
-  const status = result ? statusOf(result) : null;
+  const status = openGrade ? gradedStatus(openGrade) : result ? statusOf(result) : null;
   const toneClass = status ? styles[`card_${status.tone}`] : "";
   const explanation =
     feedback && feedback.type !== "open" && feedback.type === question.type
@@ -140,7 +154,53 @@ export function QuizQuestion({
           <MarkdownView source={explanation} />
         </div>
       )}
+
+      {openGrade && (
+        <div className={styles.grade}>
+          <p>
+            <strong>Tačno:</strong> {openGrade.right}
+          </p>
+          <p>
+            <strong>Nedostaje:</strong> {openGrade.missing}
+          </p>
+        </div>
+      )}
+
+      {gradingItems && gradingItems.length > 0 && (
+        <ul className={styles.gradingNotes} aria-label="Beleške ocenjivača">
+          {gradingItems.map((item, i) => (
+            <li key={i} className={styles[`note_${item.classification}`]}>
+              <GradingNote item={item} question={question} />
+            </li>
+          ))}
+        </ul>
+      )}
     </article>
+  );
+}
+
+function GradingNote({ item, question }: { item: GradingItem; question: PublicQuestion }) {
+  const row =
+    item.rowIndex !== null && question.type === "match" ? question.rows[item.rowIndex] : null;
+  return (
+    <>
+      {row && <strong className={styles.noteRow}>{row}: </strong>}
+      {item.classification === "gap" && <strong>Ne znam — prvo učimo ovo.</strong>}
+      {item.classification === "misconception" && (
+        <>
+          <strong>Zabluda:</strong> {item.misconception ?? item.studentAnswer ?? "—"}
+        </>
+      )}
+      {item.classification === "partial" && <strong>Nepotpun odgovor.</strong>}
+      {item.classification === "misconception" && item.likelyCause && (
+        <span className={styles.noteLine}>
+          <strong>Verovatan uzrok:</strong> {item.likelyCause}
+        </span>
+      )}
+      <span className={styles.noteLine}>
+        <strong>Ključna činjenica:</strong> {item.keyFact}
+      </span>
+    </>
   );
 }
 

@@ -1,8 +1,15 @@
-import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 import type {
   ClassDetail,
   ClassSummary,
   CourseDetail,
+  CourseProgress,
   CourseSummary,
   CreateClassInput,
   CreateCourseInput,
@@ -95,11 +102,52 @@ export function useQuizSubmissions(quizId: number) {
   });
 }
 
-/** One submission with its feedback (correct answers, explanations, key points). */
-export function useSubmission(id: number) {
+/** How often a submission is refetched while its open questions are being graded. */
+export const GRADING_POLL_MS = 5000;
+
+/** Grading has not produced a result yet and nothing says it failed. */
+export function isGradingPending(submission: SubmissionDetail | undefined): boolean {
+  return submission !== undefined && ["none", "running"].includes(submission.grading.status);
+}
+
+/**
+ * One submission with its feedback (correct answers, explanations, key points). Refetched every
+ * few seconds while grading runs. `initialData` (the POST response) skips the first fetch.
+ */
+export function useSubmission(id: number, initialData?: SubmissionDetail) {
   return useQuery({
     queryKey: queryKeys.submission(id),
     queryFn: () => apiGet<SubmissionDetail>(`/api/submissions/${id}`),
+    initialData,
+    staleTime: initialData ? Infinity : 0,
+    refetchInterval: (query) => (isGradingPending(query.state.data) ? GRADING_POLL_MS : false),
+  });
+}
+
+/** Several submissions at once (to label grading jobs); shares the cache with {@link useSubmission}. */
+export function useSubmissions(ids: readonly number[]) {
+  return useQueries({
+    queries: ids.map((id) => ({
+      queryKey: queryKeys.submission(id),
+      queryFn: () => apiGet<SubmissionDetail>(`/api/submissions/${id}`),
+    })),
+  });
+}
+
+export const PROGRESS_POLL_MS = 5000;
+
+/**
+ * Progress of a course: Sledeće, backlog, topic mastery, quiz history, observations, flags.
+ * Refetches every few seconds while any submission is being graded, so finished results appear.
+ */
+export function useCourseProgress(courseId: number) {
+  return useQuery({
+    queryKey: queryKeys.courseProgress(courseId),
+    queryFn: () => apiGet<CourseProgress>(`/api/courses/${courseId}/progress`),
+    refetchInterval: (query) =>
+      query.state.data?.quizHistory.some((q) => q.gradingStatus === "running")
+        ? PROGRESS_POLL_MS
+        : false,
   });
 }
 
@@ -239,5 +287,21 @@ export function useSubmitQuiz(quizId: number) {
     mutationFn: (answers: SubmissionAnswers) =>
       apiPost<SubmissionDetail>(`/api/quizzes/${quizId}/submissions`, { answers }),
     onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.quizSubmissions(quizId) }),
+  });
+}
+
+/** Starts (or restarts, after a failure) the grading of a submission. A 409 means it already runs. */
+export function useGradeSubmission() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (submissionId: number) =>
+      apiPost<GenerationJob>(`/api/submissions/${submissionId}/grade`),
+    onSettled: (_data, _error, submissionId) =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: queryKeys.submission(submissionId) }),
+        // The progress of every course and the class jobs shown in the panels.
+        client.invalidateQueries({ queryKey: ["courses"] }),
+        client.invalidateQueries({ queryKey: ["classes"] }),
+      ]),
   });
 }

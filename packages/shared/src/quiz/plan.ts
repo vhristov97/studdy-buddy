@@ -22,6 +22,11 @@ export const PlanQuestion = z.object({
   targetsMisconception: z.string().nullable(),
   /** Repeat of an earlier lecture's topic (goes at the end, before open questions). */
   isRepeat: z.boolean(),
+  /**
+   * For repeats (`isRepeat` true): the number of the class the topic comes from, since topic names
+   * are unique only per class. Null for questions about the current class.
+   */
+  classNumber: z.number().int().min(1).nullable(),
 });
 export type PlanQuestion = z.infer<typeof PlanQuestion>;
 

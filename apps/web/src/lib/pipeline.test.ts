@@ -39,6 +39,23 @@ describe("groupJobs", () => {
   });
 });
 
+describe("groupJobs grading", () => {
+  it("makes one group per graded submission, newest first, after the quiz", () => {
+    const groups = groupJobs([
+      job({ id: 7, kind: "grading", submissionId: 9 }),
+      job({ id: 6, kind: "grading", submissionId: 10 }),
+      job({ id: 5, kind: "grading", submissionId: 9 }),
+      job({ id: 2, kind: "quiz" }),
+    ]);
+    expect(groups.map((g) => [g.kind, g.latest.id, g.earlier.length])).toEqual([
+      ["quiz", 2, 0],
+      ["grading", 7, 1],
+      ["grading", 6, 0],
+    ]);
+    expect(new Set(groups.map((g) => g.key)).size).toBe(3);
+  });
+});
+
 describe("groupJobs order", () => {
   it("lists the lesson before the quiz regardless of ids", () => {
     const groups = groupJobs([job({ id: 9, kind: "quiz" }), job({ id: 3, kind: "lesson" })]);

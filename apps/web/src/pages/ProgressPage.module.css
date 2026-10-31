@@ -1,0 +1,272 @@
+.title {
+  overflow-wrap: anywhere;
+}
+
+.section {
+  margin-bottom: var(--space-6);
+}
+
+.muted {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.error {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Session-start flags */
+.flags {
+  display: grid;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius-md);
+  background-color: var(--color-warning-bg);
+}
+
+.flagHeading {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-base);
+}
+
+.flagList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.flagItem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.flagItem a,
+.flagList a {
+  overflow-wrap: anywhere;
+}
+
+.flagItem .error {
+  flex-basis: 100%;
+}
+
+/* Sledeće */
+.steps {
+  margin: 0;
+  padding-left: var(--space-5);
+  display: grid;
+  gap: var(--space-2);
+  overflow-wrap: anywhere;
+}
+
+/* Backlog */
+.backlog {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.groupHeading {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-base);
+}
+
+.backlogList {
+  margin: 0;
+  padding-left: var(--space-5);
+  display: grid;
+  gap: var(--space-1);
+  overflow-wrap: anywhere;
+}
+
+/* Topics */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: var(--color-surface);
+}
+
+.table th,
+.table td {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: break-word;
+}
+
+.table thead th {
+  background-color: var(--color-bg);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}
+
+.colClass,
+.colRating {
+  width: 1%;
+}
+
+.classCell,
+.ratingCell {
+  white-space: nowrap;
+}
+
+.topic {
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .table,
+  .table tbody,
+  .table td {
+    display: block;
+    width: 100%;
+  }
+
+  .table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .table tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-bottom: var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+
+  .table th,
+  .table td {
+    border: 0;
+  }
+
+  /* Header line: class number, topic and rating; the other cells appear only with content. */
+  .table .classCell {
+    order: 1;
+    flex: 0 0 auto;
+    width: auto;
+    padding-right: 0;
+    background-color: var(--color-bg);
+    align-self: stretch;
+    color: var(--color-text-muted);
+  }
+
+  .table .topic {
+    order: 2;
+    flex: 1 1 8rem;
+    width: auto;
+    min-width: 0;
+    background-color: var(--color-bg);
+  }
+
+  .table .ratingCell {
+    order: 3;
+    flex: 0 1 auto;
+    width: auto;
+    margin-left: auto;
+    padding-left: 0;
+    background-color: var(--color-bg);
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+  }
+
+  .table td[data-empty] {
+    display: none;
+  }
+
+  .table td[data-label="Testirano"],
+  .table td[data-label="Poslednja napomena"] {
+    order: 4;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .table td[data-label="Testirano"]::before,
+  .table td[data-label="Poslednja napomena"]::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+  }
+
+  .table td[data-label="Predavanje"]::before {
+    content: "Pred. ";
+  }
+}
+
+/* History */
+.history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.historyItem {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+}
+
+.historyHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+}
+
+.historyHead a {
+  overflow-wrap: anywhere;
+}
+
+.historyScore {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  margin: var(--space-1) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.historyScore strong {
+  color: var(--color-text);
+}
+
+/* Observations */
+.observations {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-5);
+  display: grid;
+  gap: var(--space-1);
+  overflow-wrap: anywhere;
+}

@@ -84,7 +84,7 @@ describe("quiz routes", () => {
   let classId: number;
 
   beforeEach(() => {
-    t = createTestApp({ pipeline: {} });
+    t = createTestApp({ pipeline: { gradingAutoStart: false } });
     courseId = t.handle.db
       .insert(course)
       .values({ name: "Kurs" })

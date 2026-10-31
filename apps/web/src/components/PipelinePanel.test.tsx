@@ -224,6 +224,80 @@ describe("PipelineStages quiz rows", () => {
   });
 });
 
+const gradingJob = (over: Parameters<typeof job>[0] = {}) =>
+  job({
+    id: 4,
+    kind: "grading",
+    stage: "grader",
+    submissionId: 9,
+    status: "succeeded",
+    finishedAt: "2026-01-01T10:02:00.000Z",
+    ...over,
+  });
+const TARGET = { quizId: 1, code: "P01", submittedAt: new Date(2026, 0, 3, 14, 5).toISOString() };
+
+describe("PipelineStages grading rows", () => {
+  it("labels a grading job with the quiz code and submission date, linked to the submission", () => {
+    render(
+      <PipelineStages
+        jobs={[gradingJob()]}
+        progress={new Map()}
+        now={NOW}
+        gradingTargets={new Map([[9, TARGET]])}
+      />,
+    );
+    expect(screen.getByText("Ocenjivanje")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "P01 · 3. 1. 2026. 14:05" })).toHaveAttribute(
+      "href",
+      "/kvizovi/1/predaje/9",
+    );
+  });
+
+  it("lists one row per graded submission", () => {
+    render(
+      <PipelineStages
+        jobs={[gradingJob({ id: 6, submissionId: 10 }), gradingJob()]}
+        progress={new Map()}
+        now={NOW}
+        gradingTargets={
+          new Map([
+            [9, TARGET],
+            [10, { ...TARGET, quizId: 2, code: "P02" }],
+          ])
+        }
+      />,
+    );
+    expect(screen.getAllByText("Ocenjivanje")).toHaveLength(2);
+    expect(screen.getByRole("link", { name: /^P02/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^P01/ })).toBeInTheDocument();
+  });
+
+  it("offers 'Oceni ponovo' on a failed grading job", async () => {
+    const onGrade = vi.fn();
+    render(
+      <PipelineStages
+        jobs={[gradingJob({ ...FAILED, error: "Model nije odgovorio" })]}
+        progress={new Map()}
+        now={NOW}
+        gradingTargets={new Map([[9, TARGET]])}
+        onGrade={onGrade}
+        gradeError={{ submissionId: 9, message: "Ocenjivanje već traje." }}
+      />,
+    );
+    expect(screen.getByText("Model nije odgovorio")).toBeInTheDocument();
+    expect(screen.getByText("Ocenjivanje već traje.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Oceni ponovo" }));
+    expect(onGrade).toHaveBeenCalledWith(9);
+  });
+
+  it("offers no regrade on a running or succeeded grading job", () => {
+    render(
+      <PipelineStages jobs={[gradingJob()]} progress={new Map()} now={NOW} onGrade={vi.fn()} />,
+    );
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+});
+
 describe("PipelinePanel", () => {
   afterEach(() => vi.unstubAllGlobals());
 
@@ -295,6 +369,28 @@ describe("PipelinePanel", () => {
       "/kvizovi/1",
     );
     expect(screen.queryByText(/P02/)).not.toBeInTheDocument();
+  });
+
+  it("labels a grading job from its submission and regrades from the failed row", async () => {
+    const { requests } = mockApi({
+      "GET /api/classes/5/jobs": () => ({
+        jobs: [gradingJob({ ...FAILED, error: "Greška" }), lessonDone()],
+      }),
+      "GET /api/submissions/9": () => ({ id: 9, quizId: 1, submittedAt: TARGET.submittedAt }),
+      "GET /api/courses/1/quizzes": () => [quizSummary()],
+      "POST /api/submissions/9/grade": () => gradingJob({ id: 7 }),
+    });
+    renderPanel();
+    expect(await screen.findByRole("link", { name: "P01 · 3. 1. 2026. 14:05" })).toHaveAttribute(
+      "href",
+      "/kvizovi/1/predaje/9",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Oceni ponovo" }));
+    await waitFor(() =>
+      expect(requests).toContainEqual(
+        expect.objectContaining({ method: "POST", path: "/api/submissions/9/grade" }),
+      ),
+    );
   });
 
   it("keeps the event stream open while a quiz job runs on a ready class", async () => {

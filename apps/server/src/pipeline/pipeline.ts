@@ -7,6 +7,7 @@ import {
   type LessonWriterOptions,
 } from "../agents/lesson-writer.js";
 import type { Coordinator, CoordinatorLogger } from "../agents/coordinator.js";
+import { gradeSubmission as realGradeSubmission } from "../agents/grader.js";
 import { StageError } from "../agents/stage.js";
 import type { Db } from "../db/client.js";
 import {
@@ -22,6 +23,7 @@ import { ConflictError } from "../repositories/conflict.js";
 import { getJob } from "../repositories/lessons.js";
 import { notFound } from "../routes/errors.js";
 import { createJobEmitter, createProgressReporter, truncate } from "./common.js";
+import { registerGradingBranch } from "./grading-branch.js";
 import { registerQuizBranch, type QuizAgents } from "./quiz-branch.js";
 import { DOMAIN_EVENTS, type GenerateRequestedPayload, type LessonReadyPayload } from "./events.js";
 
@@ -40,6 +42,10 @@ export interface PipelineOptions {
   quizAgents?: Partial<QuizAgents>;
   /** Off: no quiz job starts on `lesson.ready` (lesson-only tests). Default on. */
   quizAutoStart?: boolean;
+  /** Replaceable in tests: the grader agent. */
+  gradeSubmission?: typeof realGradeSubmission;
+  /** Off: no grading job starts on `submission.created`. Default on. */
+  gradingAutoStart?: boolean;
   /** Minimum gap between two progress events of a job. */
   progressIntervalMs?: number;
 }
@@ -53,6 +59,11 @@ export interface Pipeline {
    * 404/409 `ApiError`s.
    */
   requestQuizRegeneration(classId: number): GenerationJob;
+  /**
+   * Grades a submission that has no result and whose latest grading job failed or is absent.
+   * Throws 404/409 `ApiError`s.
+   */
+  requestGrading(submissionId: number): GenerationJob;
   /**
    * For startup: no job survives a restart, so mark running jobs and generating classes failed.
    * A `ready` class stays `ready` when only its quiz job was running.
@@ -80,6 +91,8 @@ export function createPipeline({
   writeLesson = realWriteLesson,
   quizAgents,
   quizAutoStart = true,
+  gradeSubmission,
+  gradingAutoStart = true,
   progressIntervalMs = 500,
 }: PipelineOptions): Pipeline {
   const emitJob = createJobEmitter(db, coordinator);
@@ -271,6 +284,14 @@ export function createPipeline({
     progressIntervalMs,
     autoStart: quizAutoStart,
   });
+  const gradingBranch = registerGradingBranch({
+    db,
+    coordinator,
+    logger,
+    ...(gradeSubmission && { gradeSubmission }),
+    progressIntervalMs,
+    autoStart: gradingAutoStart,
+  });
 
   function recoverInterruptedJobs(): void {
     db.transaction((tx) => {
@@ -288,6 +309,7 @@ export function createPipeline({
   return {
     requestGeneration,
     requestQuizRegeneration: quizBranch.requestRegeneration,
+    requestGrading: gradingBranch.requestRegrade,
     recoverInterruptedJobs,
   };
 }

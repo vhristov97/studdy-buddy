@@ -1,7 +1,8 @@
-import { and, asc, eq, lt } from "drizzle-orm";
+import { and, asc, eq, isNull, lt } from "drizzle-orm";
 import { lessonQuizCode, type LessonView, type TopicRating } from "@studdy/shared";
 import type { Db } from "../db/client.js";
-import { classTable, course } from "../db/schema.js";
+import { backlogItem, classTable, course, topic as topicTable } from "../db/schema.js";
+import { loadBacklog, loadObservations } from "../grading/context.js";
 import { getLessonView } from "../repositories/lessons.js";
 
 export interface QuizTopicHistoryEntry {
@@ -23,9 +24,16 @@ export interface QuizTopicInput {
 
 export interface BacklogItem {
   topic: string;
+  /** Number of the class the topic belongs to (topic names can repeat across classes). */
+  classNumber: number;
   /** The quiz the topic is due in, e.g. "K1". */
   dueQuiz: string;
   reason: string;
+  /**
+   * The topic is deferred (not yet covered by the lecturer): shown to the planner, never tested.
+   * Set by `loadQuizContext` only; absent means not deferred.
+   */
+  deferred?: boolean;
 }
 
 export interface EarlierLesson {
@@ -34,7 +42,10 @@ export interface EarlierLesson {
   lessonMd: string;
 }
 
-/** How many earlier classes (the most recent ones with repeat candidates) feed repeat questions. */
+/**
+ * How many earlier classes (the most recent ones with weak topics) feed repeat questions; classes
+ * with backlog topics are always added on top of that.
+ */
 export const MAX_EARLIER_LESSONS = 3;
 
 /** Everything the quiz planner (and, in part, the builder and reviewer) needs about one class. */
@@ -47,8 +58,9 @@ export interface QuizContext {
   /** Topics of this class, in lesson order. */
   topics: QuizTopicInput[];
   /**
-   * Weak topics of earlier classes (rated ✗ or ~, or with misconception history): repeat
-   * candidates. Only from the classes in `earlierLessons`.
+   * Weak topics of earlier classes (rated ✗ or ~, or with misconception history) plus every
+   * unresolved, not deferred backlog topic of an earlier class: repeat candidates. Deferred topics
+   * are never repeat candidates. Only from the classes in `earlierLessons`.
    */
   earlierTopics: (QuizTopicInput & { classNumber: number })[];
   /**
@@ -56,9 +68,9 @@ export interface QuizContext {
    * first; the source material for repeat questions. Limited to the most recent classes.
    */
   earlierLessons: EarlierLesson[];
-  /** Topics left out of earlier quizzes. Empty until the backlog table arrives (M6). */
+  /** The course's unresolved backlog items (the planner picks the ones due in this class's cumulative quiz). */
   backlog: BacklogItem[];
-  /** Learner observations. Empty until M6. */
+  /** Cross-course learner observations, oldest first. */
   observations: string[];
 }
 
@@ -68,7 +80,7 @@ export interface NotesMisconception {
   correction: string;
 }
 
-function toTopicInput(topic: LessonView["topics"][number]): QuizTopicInput {
+export function toTopicInput(topic: LessonView["topics"][number]): QuizTopicInput {
   return {
     name: topic.name,
     rating: topic.rating,
@@ -113,20 +125,56 @@ export function loadQuizContext(db: Db, classId: number): QuizContext {
     .where(and(eq(classTable.courseId, row.cls.courseId), lt(classTable.number, row.cls.number)))
     .orderBy(asc(classTable.number))
     .all();
-  const withCandidates: {
+  // Unresolved backlog items must be coverable as repeats, weak or not.
+  const deferredKeys = new Set(
+    db
+      .select({ name: topicTable.name, classNumber: classTable.number })
+      .from(backlogItem)
+      .innerJoin(topicTable, eq(topicTable.id, backlogItem.topicId))
+      .innerJoin(classTable, eq(classTable.id, topicTable.classId))
+      .where(
+        and(
+          eq(backlogItem.courseId, row.cls.courseId),
+          isNull(backlogItem.resolvedAt),
+          eq(topicTable.deferred, true),
+        ),
+      )
+      .all()
+      .map((b) => JSON.stringify([b.name, b.classNumber])),
+  );
+  const backlog: BacklogItem[] = loadBacklog(db, row.cls.courseId).map((b) => ({
+    ...b,
+    deferred: deferredKeys.has(JSON.stringify([b.topic, b.classNumber])),
+  }));
+  // A deferred topic is never a repeat candidate; it stays in the backlog list only.
+  const backlogKeys = new Set(
+    backlog.filter((b) => !b.deferred).map((b) => JSON.stringify([b.topic, b.classNumber])),
+  );
+  const candidatesOf: {
     cls: (typeof earlierClasses)[number];
     lesson: LessonView;
     topics: QuizTopicInput[];
+    hasBacklog: boolean;
   }[] = [];
   for (const earlier of earlierClasses) {
     const view = getLessonView(db, earlier.id);
     if (!view) continue;
-    const candidates = view.topics.map(toTopicInput).filter(isRepeatCandidate);
-    if (candidates.length > 0)
-      withCandidates.push({ cls: earlier, lesson: view, topics: candidates });
+    const all = view.topics.map(toTopicInput);
+    const inBacklog = (t: QuizTopicInput) =>
+      backlogKeys.has(JSON.stringify([t.name, earlier.number]));
+    // Deferred topics are never repeat candidates, weak or on the backlog.
+    const topics = all.filter((t) => !t.deferred && (isRepeatCandidate(t) || inBacklog(t)));
+    if (topics.length > 0) {
+      candidatesOf.push({ cls: earlier, lesson: view, topics, hasBacklog: topics.some(inBacklog) });
+    }
   }
-  // Every candidate keeps its lesson: only the most recent classes with candidates are used.
-  const recent = withCandidates.slice(-MAX_EARLIER_LESSONS);
+  // Every candidate keeps its lesson. Classes with backlog topics are always kept (the limit is
+  // raised for them); the remaining slots go to the most recent classes with weak topics.
+  const backlogClasses = candidatesOf.filter((c) => c.hasBacklog);
+  const plainSlots = Math.max(0, MAX_EARLIER_LESSONS - backlogClasses.length);
+  const plain = candidatesOf.filter((c) => !c.hasBacklog);
+  const keptPlain = plainSlots === 0 ? [] : plain.slice(-plainSlots);
+  const recent = [...backlogClasses, ...keptPlain].sort((x, y) => x.cls.number - y.cls.number);
   const earlierTopics: QuizContext["earlierTopics"] = recent.flatMap((c) =>
     c.topics.map((t) => ({ ...t, classNumber: c.cls.number })),
   );
@@ -148,8 +196,8 @@ export function loadQuizContext(db: Db, classId: number): QuizContext {
     topics: lesson.topics.map(toTopicInput),
     earlierTopics,
     earlierLessons,
-    backlog: [],
-    observations: [],
+    backlog,
+    observations: loadObservations(db),
   };
 }
 

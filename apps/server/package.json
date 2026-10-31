@@ -24,6 +24,7 @@
     "extract": "tsx scripts/extract.ts",
     "lesson:try": "tsx scripts/try-lesson.ts",
     "quiz:try": "tsx scripts/try-quiz.ts",
+    "grade:try": "tsx scripts/try-grade.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts"
   },

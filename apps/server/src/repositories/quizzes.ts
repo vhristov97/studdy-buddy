@@ -12,6 +12,7 @@ import {
 } from "@studdy/shared";
 import type { Db } from "../db/client.js";
 import { course, quiz, submission } from "../db/schema.js";
+import { getSubmissionGrading, gradingStateOf } from "./grading.js";
 
 /** Released quizzes of a course, newest first. Neither questions nor plans are included. */
 export function listQuizSummaries(db: Db, courseId: number): QuizSummary[] {
@@ -76,7 +77,7 @@ export function getPublicQuiz(db: Db, quizId: number): PublicQuiz | undefined {
   };
 }
 
-function toSubmissionSummary(row: SubmissionRow): SubmissionSummary {
+function toSubmissionSummary(db: Db, row: SubmissionRow): SubmissionSummary {
   return {
     id: row.id,
     quizId: row.quizId,
@@ -85,15 +86,17 @@ function toSubmissionSummary(row: SubmissionRow): SubmissionSummary {
     openPending: row.openPending,
     dontKnow: row.dontKnowJson,
     submittedAt: row.submittedAt.toISOString(),
+    gradingStatus: gradingStateOf(db, row.id).status,
   };
 }
 
-function toSubmissionDetail(row: SubmissionRow, fullQuiz: Quiz): SubmissionDetail {
+function toSubmissionDetail(db: Db, row: SubmissionRow, fullQuiz: Quiz): SubmissionDetail {
   return {
-    ...toSubmissionSummary(row),
+    ...toSubmissionSummary(db, row),
     answers: row.answersJson,
     results: row.resultsJson,
     feedback: toFeedback(fullQuiz),
+    grading: getSubmissionGrading(db, row.id),
   };
 }
 
@@ -117,7 +120,7 @@ export function createSubmission(
     })
     .returning()
     .get();
-  return toSubmissionDetail(row, fullQuiz);
+  return toSubmissionDetail(db, row, fullQuiz);
 }
 
 /** Submissions of a quiz, newest first. */
@@ -128,12 +131,12 @@ export function listSubmissions(db: Db, quizId: number): SubmissionSummary[] {
     .where(eq(submission.quizId, quizId))
     .orderBy(desc(submission.id))
     .all()
-    .map(toSubmissionSummary);
+    .map((row) => toSubmissionSummary(db, row));
 }
 
 export function getSubmissionDetail(db: Db, submissionId: number): SubmissionDetail | undefined {
   const row = db.select().from(submission).where(eq(submission.id, submissionId)).get();
   if (!row) return undefined;
   const full = getFullQuiz(db, row.quizId);
-  return full ? toSubmissionDetail(row, full.quiz) : undefined;
+  return full ? toSubmissionDetail(db, row, full.quiz) : undefined;
 }

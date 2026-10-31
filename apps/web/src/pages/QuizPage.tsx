@@ -19,6 +19,7 @@ import {
 import { Badge } from "../components/Badge";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { Button } from "../components/Button";
+import { GradingReport, GradingStatusLine } from "../components/GradingStatus";
 import { EmptyState } from "../components/EmptyState";
 import { QueryBoundary } from "../components/QueryBoundary";
 import { QuizQuestion } from "../components/QuizQuestion";
@@ -140,6 +141,10 @@ function QuizPicker({ quiz }: { quiz: PublicQuiz }) {
   );
 }
 
+function countOpen(quiz: PublicQuiz): number {
+  return quiz.questions.filter((q) => q.type === "open").length;
+}
+
 function scoreText(score: Pick<QuizScore, "autoScore" | "autoMax">): string {
   return `${formatDecimal(score.autoScore)} / ${score.autoMax}`;
 }
@@ -154,7 +159,7 @@ function ScoreLine({
   return (
     <div className={styles.score} ref={focusRef} tabIndex={-1} role="status">
       <strong>Rezultat: {scoreText(submission)}</strong>
-      {submission.openPending > 0 && (
+      {submission.openPending > 0 && submission.grading.status !== "done" && (
         <span className={styles.pending}>{openAwaitingGrading(submission.openPending)}</span>
       )}
     </div>
@@ -174,6 +179,8 @@ function Questions({
 }) {
   const results = new Map(submission?.results.map((r) => [r.id, r]));
   const feedback = new Map(submission?.feedback.questions.map((f) => [f.id, f]));
+  const graded = submission?.grading.status === "done" ? submission.grading.result : null;
+  const openGrades = new Map(graded?.openGrades.map((g) => [g.questionId, g]));
   return (
     <ol className={styles.questions}>
       {quiz.questions.map((question, index) => (
@@ -186,6 +193,8 @@ function Questions({
             locked={submission !== null}
             result={results.get(question.id)}
             feedback={feedback.get(question.id)}
+            openGrade={openGrades.get(question.id)}
+            gradingItems={graded?.items.filter((item) => item.questionId === question.id)}
           />
         </li>
       ))}
@@ -264,20 +273,7 @@ function LivePlayer({ quiz }: { quiz: PublicQuiz }) {
 
   if (submission) {
     return (
-      <>
-        <ScoreLine submission={submission} />
-        <Questions
-          quiz={quiz}
-          draft={draftFromAnswers(quiz, submission.answers)}
-          submission={submission}
-        />
-        <ScoreLine submission={submission} focusRef={bottomScore} />
-        <div className={styles.actions}>
-          <Button variant="primary" onClick={reset}>
-            Pokušaj ponovo
-          </Button>
-        </div>
-      </>
+      <SubmittedView quiz={quiz} initial={submission} focusRef={bottomScore} onReset={reset} />
     );
   }
 
@@ -349,6 +345,39 @@ function LivePlayer({ quiz }: { quiz: PublicQuiz }) {
   );
 }
 
+/** The result right after submitting; the grading state keeps updating while it runs. */
+function SubmittedView({
+  quiz,
+  initial,
+  focusRef,
+  onReset,
+}: {
+  quiz: PublicQuiz;
+  initial: SubmissionDetail;
+  focusRef: React.Ref<HTMLDivElement>;
+  onReset: () => void;
+}) {
+  const submission = useSubmission(initial.id, initial).data ?? initial;
+  return (
+    <>
+      <ScoreLine submission={submission} />
+      <GradingStatusLine submission={submission} openCount={countOpen(quiz)} />
+      <Questions
+        quiz={quiz}
+        draft={draftFromAnswers(quiz, submission.answers)}
+        submission={submission}
+      />
+      <GradingReport submission={submission} />
+      <ScoreLine submission={submission} focusRef={focusRef} />
+      <div className={styles.actions}>
+        <Button variant="primary" onClick={onReset}>
+          Pokušaj ponovo
+        </Button>
+      </div>
+    </>
+  );
+}
+
 function SaveFallback({
   attempt,
   quizId,
@@ -414,11 +443,13 @@ function ReviewPlayer({ quiz, submissionId }: { quiz: PublicQuiz; submissionId: 
               Predaja od {formatDateTime(submission.submittedAt)}. Odgovori se samo pregledaju.
             </p>
             <ScoreLine submission={submission} />
+            <GradingStatusLine submission={submission} openCount={countOpen(quiz)} />
             <Questions
               quiz={quiz}
               draft={draftFromAnswers(quiz, submission.answers)}
               submission={submission}
             />
+            <GradingReport submission={submission} />
             <ScoreLine submission={submission} />
             <div className={styles.actions}>
               <Link to={`/kvizovi/${quiz.id}`} className={styles.retakeLink}>

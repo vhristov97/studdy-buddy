@@ -57,6 +57,14 @@ export const generationRoutes: FastifyPluginAsync<GenerationRouteOptions> = asyn
     },
   );
 
+  app.post<{ Params: { submissionId: string } }>(
+    "/api/submissions/:submissionId/grade",
+    async (request, reply) => {
+      const submissionId = parseId("submissionId", request.params.submissionId);
+      return reply.code(202).send(pipeline.requestGrading(submissionId));
+    },
+  );
+
   const openStreams = new Set<() => void>();
   // Without this, `app.close()` would wait forever for the open event streams. It has to be
   // `preClose`: `onClose` hooks only run after the server has closed, i.e. after the streams end.

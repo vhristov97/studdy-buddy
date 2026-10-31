@@ -23,7 +23,12 @@ export interface TestAppOptions {
   /** Adds a coordinator and pipeline (and so the generate routes). The agent runtime must be initialized. */
   pipeline?: Pick<
     PipelineOptions,
-    "writeLesson" | "quizAgents" | "quizAutoStart" | "progressIntervalMs"
+    | "writeLesson"
+    | "quizAgents"
+    | "quizAutoStart"
+    | "gradeSubmission"
+    | "gradingAutoStart"
+    | "progressIntervalMs"
   >;
 }
 

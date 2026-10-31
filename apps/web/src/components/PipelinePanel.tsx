@@ -3,11 +3,18 @@ import { Link } from "react-router";
 import type { ClassStatus, GenerationJob, QuizSummary } from "@studdy/shared";
 import { ApiError } from "../api/client";
 import { useClassEvents } from "../api/events";
-import { useClassJobs, useCourseQuizzes, useRegenerateQuiz } from "../api/hooks";
+import {
+  useClassJobs,
+  useCourseQuizzes,
+  useGradeSubmission,
+  useRegenerateQuiz,
+  useSubmissions,
+} from "../api/hooks";
 import { groupJobs, JOB_KIND_LABELS, mergeJobs, stageLabel } from "../lib/pipeline";
-import { countQuestions, formatCount, formatDuration, plural } from "../lib/format";
+import { countQuestions, formatCount, formatDateTime, formatDuration, plural } from "../lib/format";
 import { Button } from "./Button";
 import { ErrorMessage } from "./ErrorMessage";
+import { gradeErrorText } from "./GradingStatus";
 import { Spinner } from "./Spinner";
 import styles from "./PipelinePanel.module.css";
 
@@ -45,7 +52,29 @@ export function PipelinePanel({ classId, courseId, classStatus, onRetry, retryin
   const now = useNow(jobs.some((job) => job.status === "running"));
   const startQuiz = useRegenerateQuiz(classId);
   const latestQuiz = jobs.find((job) => job.kind === "quiz");
-  const quizzes = useCourseQuizzes(courseId, latestQuiz?.status === "succeeded");
+  const grade = useGradeSubmission();
+  const gradingIds = [
+    ...new Set(
+      jobs.flatMap((job) => (job.kind === "grading" && job.submissionId ? [job.submissionId] : [])),
+    ),
+  ];
+  const submissions = useSubmissions(gradingIds);
+  const quizzes = useCourseQuizzes(
+    courseId,
+    latestQuiz?.status === "succeeded" || gradingIds.length > 0,
+  );
+  const gradingTargets = new Map<number, GradingTarget>();
+  gradingIds.forEach((id, i) => {
+    const submission = submissions[i]?.data;
+    const quiz = quizzes.data?.find((item) => item.id === submission?.quizId);
+    if (submission && quiz) {
+      gradingTargets.set(id, {
+        quizId: quiz.id,
+        code: quiz.code,
+        submittedAt: submission.submittedAt,
+      });
+    }
+  });
 
   if (jobs.length === 0) return null;
   return (
@@ -59,12 +88,28 @@ export function PipelinePanel({ classId, courseId, classStatus, onRetry, retryin
       onStartQuiz={classStatus === "ready" ? () => startQuiz.mutate() : undefined}
       startingQuiz={startQuiz.isPending}
       startQuizError={startQuiz.isError ? startQuizErrorText(startQuiz.error) : null}
+      gradingTargets={gradingTargets}
+      onGrade={(submissionId) => grade.mutate(submissionId)}
+      grading={grade.isPending}
+      gradeError={
+        grade.isError && grade.variables !== undefined
+          ? { submissionId: grade.variables, message: gradeErrorText(grade.error) }
+          : null
+      }
     />
   );
 }
 
 function startQuizErrorText(error: unknown): string {
   return error instanceof ApiError ? error.message : "Pravljenje kviza nije uspelo.";
+}
+
+/** What a grading job grades: the quiz and the moment of the submission. */
+export interface GradingTarget {
+  quizId: number;
+  code: string;
+  /** ISO 8601. */
+  submittedAt: string;
 }
 
 interface StagesProps {
@@ -83,6 +128,12 @@ interface StagesProps {
   onStartQuiz?: () => void;
   startingQuiz?: boolean;
   startQuizError?: string | null;
+  /** Grading jobs' submissions by id, for their label and link. */
+  gradingTargets?: ReadonlyMap<number, GradingTarget>;
+  /** Grades a submission again (failed grading job); leave out to hide the button. */
+  onGrade?: (submissionId: number) => void;
+  grading?: boolean;
+  gradeError?: { submissionId: number; message: string } | null;
 }
 
 export function PipelineStages({
@@ -95,6 +146,10 @@ export function PipelineStages({
   onStartQuiz,
   startingQuiz,
   startQuizError,
+  gradingTargets,
+  onGrade,
+  grading,
+  gradeError,
 }: StagesProps) {
   const groups = groupJobs(jobs);
   const lessonDone = groups.some(
@@ -113,11 +168,16 @@ export function PipelineStages({
       </h2>
       <div aria-live="polite">
         <ul className={styles.stages}>
-          {groups.map(({ kind, latest, earlier }) => (
-            <li key={kind} className={styles.stage}>
+          {groups.map(({ key, kind, latest, earlier }) => (
+            <li key={key} className={styles.stage}>
               <JobRow
                 job={latest}
                 label={JOB_KIND_LABELS[kind]}
+                gradingTarget={
+                  latest.submissionId === null
+                    ? undefined
+                    : gradingTargets?.get(latest.submissionId)
+                }
                 chars={progress.get(latest.id)}
                 now={now}
                 released={kind === "quiz" ? releasedQuiz : undefined}
@@ -133,6 +193,23 @@ export function PipelineStages({
                   {startQuizError && <ErrorMessage>{startQuizError}</ErrorMessage>}
                 </>
               )}
+              {kind === "grading" &&
+                latest.status === "failed" &&
+                latest.submissionId !== null &&
+                onGrade && (
+                  <>
+                    <Button
+                      variant="primary"
+                      onClick={() => onGrade(latest.submissionId!)}
+                      disabled={grading}
+                    >
+                      Oceni ponovo
+                    </Button>
+                    {gradeError?.submissionId === latest.submissionId && (
+                      <ErrorMessage>{gradeError.message}</ErrorMessage>
+                    )}
+                  </>
+                )}
               {earlier.length > 0 && (
                 <details className={styles.earlier}>
                   <summary>
@@ -141,7 +218,16 @@ export function PipelineStages({
                   <ul className={styles.stages}>
                     {earlier.map((job) => (
                       <li key={job.id}>
-                        <JobRow job={job} label={JOB_KIND_LABELS[kind]} now={now} />
+                        <JobRow
+                          job={job}
+                          label={JOB_KIND_LABELS[kind]}
+                          now={now}
+                          gradingTarget={
+                            job.submissionId === null
+                              ? undefined
+                              : gradingTargets?.get(job.submissionId)
+                          }
+                        />
                       </li>
                     ))}
                   </ul>
@@ -175,9 +261,11 @@ interface RowProps {
   now: number;
   /** The quiz this (succeeded) job released. */
   released?: QuizSummary;
+  /** The submission this (grading) job grades. */
+  gradingTarget?: GradingTarget;
 }
 
-function JobRow({ job, label, chars, now, released }: RowProps) {
+function JobRow({ job, label, chars, now, released, gradingTarget }: RowProps) {
   const running = job.status === "running";
   const end = job.finishedAt ? Date.parse(job.finishedAt) : now;
   const duration = formatDuration(end - Date.parse(job.createdAt));
@@ -199,6 +287,11 @@ function JobRow({ job, label, chars, now, released }: RowProps) {
         {job.status === "succeeded" && released && (
           <Link to={`/kvizovi/${released.id}`}>
             {`${released.code} · ${countQuestions(released.questionCount)}`}
+          </Link>
+        )}
+        {gradingTarget && job.submissionId !== null && (
+          <Link to={`/kvizovi/${gradingTarget.quizId}/predaje/${job.submissionId}`}>
+            {`${gradingTarget.code} · ${formatDateTime(gradingTarget.submittedAt)}`}
           </Link>
         )}
         {job.attempt > 1 && <span>pokušaj {job.attempt}</span>}

@@ -14,6 +14,7 @@ const planQuestion = {
   extra: false,
   targetsMisconception: "Batch je uvek sporiji",
   isRepeat: false,
+  classNumber: null,
 };
 
 const plan = {

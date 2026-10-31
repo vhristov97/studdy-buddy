@@ -12,6 +12,7 @@ import {
   CLASS_STATUSES,
   EXTRACTION_STATUSES,
   JOB_KINDS,
+  BACKLOG_REASONS,
   JOB_STATUSES,
   MATERIAL_KINDS,
   TOPIC_EVENT_SOURCES,
@@ -22,6 +23,7 @@ import {
   type QuizReview,
   type Question,
   type QuestionResult,
+  type GradingResult,
   type SubmissionAnswers,
 } from "@studdy/shared";
 
@@ -107,6 +109,10 @@ export const generationJob = sqliteTable(
     error: text("error"),
     /** Review cycle (from 1) of a quiz job; null otherwise. */
     cycle: integer("cycle"),
+    /** The submission a `grading` job grades. */
+    submissionId: integer("submission_id").references((): AnySQLiteColumn => submission.id, {
+      onDelete: "cascade",
+    }),
     /** The failed job this one retries. */
     parentJobId: integer("parent_job_id").references((): AnySQLiteColumn => generationJob.id, {
       onDelete: "set null",
@@ -241,3 +247,76 @@ export const submission = sqliteTable(
   },
   (table) => [index("submission_quiz_id_idx").on(table.quizId)],
 );
+
+/** The grader's result for a submission, kept whole; the other rows are derived from it. */
+export const result = sqliteTable("result", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  submissionId: integer("submission_id")
+    .notNull()
+    .unique()
+    .references(() => submission.id, { onDelete: "cascade" }),
+  jobId: integer("job_id").references(() => generationJob.id, { onDelete: "set null" }),
+  resultJson: text("result_json", { mode: "json" }).$type<GradingResult>().notNull(),
+  /** Sum of the open-question scores. */
+  openScore: real("open_score").notNull(),
+  /** The submission's automatic score plus `openScore`. */
+  totalScore: real("total_score").notNull(),
+  writeupMd: text("writeup_md").notNull(),
+  createdAt: createdAt(),
+});
+
+/** A topic the student must be tested on again; at most one unresolved item per topic. */
+export const backlogItem = sqliteTable(
+  "backlog_item",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    courseId: integer("course_id")
+      .notNull()
+      .references(() => course.id, { onDelete: "cascade" }),
+    topicId: integer("topic_id")
+      .notNull()
+      .references(() => topic.id, { onDelete: "cascade" }),
+    /** The cumulative quiz the topic is mandatory in, e.g. "K1". */
+    dueQuiz: text("due_quiz").notNull(),
+    reason: text("reason", { enum: BACKLOG_REASONS }).notNull(),
+    submissionId: integer("submission_id").references(() => submission.id, {
+      onDelete: "set null",
+    }),
+    createdAt: createdAt(),
+    resolvedAt: integer("resolved_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [
+    index("backlog_item_course_id_idx").on(table.courseId),
+    index("backlog_item_topic_id_idx").on(table.topicId),
+  ],
+);
+
+/** The "Sledeće" list; replaced wholesale per course by each grading. */
+export const nextStep = sqliteTable(
+  "next_step",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    courseId: integer("course_id")
+      .notNull()
+      .references(() => course.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    text: text("text").notNull(),
+    submissionId: integer("submission_id").references(() => submission.id, {
+      onDelete: "set null",
+    }),
+    createdAt: createdAt(),
+  },
+  (table) => [index("next_step_course_id_idx").on(table.courseId)],
+);
+
+/** What the grader learned about the student; shared across courses. */
+export const learnerObservation = sqliteTable("learner_observation", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  text: text("text").notNull(),
+  /** The course it was observed in. */
+  courseId: integer("course_id").references(() => course.id, { onDelete: "set null" }),
+  submissionId: integer("submission_id").references(() => submission.id, {
+    onDelete: "set null",
+  }),
+  createdAt: createdAt(),
+});
