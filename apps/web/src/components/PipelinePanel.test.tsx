@@ -5,7 +5,7 @@ import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { QuizSummary } from "@studdy/shared";
-import { apiError, job, mockApi } from "../test/utils";
+import { apiError, job, mockApi, vizSuggestionFixture } from "../test/utils";
 import { PipelinePanel, PipelineStages } from "./PipelinePanel";
 
 /** The panel links to the player, so it needs a router. */
@@ -316,5 +316,104 @@ describe("PipelinePanel", () => {
     renderPanel("ready");
     expect(await screen.findByText("Provera (krug 2)")).toBeInTheDocument();
     expect(sources).toEqual(["/api/classes/5/events"]);
+  });
+
+  it("labels viz rows with the topic and keeps the stream open while one runs", async () => {
+    const sources: string[] = [];
+    class Stub {
+      constructor(url: string) {
+        sources.push(url);
+      }
+      addEventListener() {}
+      removeEventListener() {}
+      close() {}
+    }
+    vi.stubGlobal("EventSource", Stub);
+    mockApi({
+      "GET /api/classes/5/jobs": () => ({
+        jobs: [
+          job({ id: 6, kind: "viz", stage: "viz-builder", cycle: null, suggestionId: 1 }),
+          job({ id: 5, kind: "viz", stage: "viz-planner", suggestionId: 2 }),
+          job({ id: 4, kind: "viz_topics", stage: "viz-identifier", status: "succeeded" }),
+          lessonDone(),
+        ],
+      }),
+      "GET /api/classes/5/viz-suggestions": () => [
+        { ...vizSuggestionFixture({ id: 1, concept: "Sharding" }), selected: true },
+        { ...vizSuggestionFixture({ id: 2, concept: "Replikacija" }), selected: true },
+      ],
+    });
+    renderPanel("ready");
+    expect(await screen.findByText("Vizualizacija: Sharding")).toBeInTheDocument();
+    expect(screen.getByText("Vizualizacija: Replikacija")).toBeInTheDocument();
+    expect(screen.getByText("Predlozi vizualizacija")).toBeInTheDocument();
+    expect(sources).toEqual(["/api/classes/5/events"]);
+  });
+});
+
+describe("PipelineStages viz rows", () => {
+  const vizJob = (over: Parameters<typeof job>[0] = {}) =>
+    job({ id: 5, kind: "viz", stage: "viz-planner", suggestionId: 1, ...over });
+  const labels = (container: HTMLElement) =>
+    [...container.querySelectorAll("strong")].map((el) => el.textContent);
+
+  it("renders one row per suggestion, after the topics row", () => {
+    const { container } = render(
+      <PipelineStages
+        jobs={[
+          vizJob({ id: 9, suggestionId: 2, stage: "viz-builder", cycle: 1 }),
+          vizJob({ id: 8, suggestionId: 1 }),
+          job({ id: 7, kind: "viz_topics", stage: "viz-identifier", status: "succeeded" }),
+          lessonDone({ id: 3 }),
+        ]}
+        progress={new Map()}
+        now={NOW}
+        vizConcepts={
+          new Map([
+            [1, "Sharding"],
+            [2, "Replikacija"],
+          ])
+        }
+      />,
+    );
+    expect(labels(container)).toEqual([
+      "Objedinjene beleške",
+      "Predlozi vizualizacija",
+      "Vizualizacija: Sharding",
+      "Vizualizacija: Replikacija",
+    ]);
+    expect(screen.getByText("Planiranje")).toBeInTheDocument();
+    expect(screen.getByText("Ispravke (krug 1)")).toBeInTheDocument();
+  });
+
+  it("falls back to a plain label while the topic name is unknown", () => {
+    const { container } = render(
+      <PipelineStages jobs={[vizJob()]} progress={new Map()} now={NOW} />,
+    );
+    expect(labels(container)).toEqual(["Vizualizacija"]);
+  });
+
+  it("keeps retries of one suggestion as earlier attempts of its row", () => {
+    const { container } = render(
+      <PipelineStages
+        jobs={[
+          vizJob({ id: 12, suggestionId: 1, attempt: 2 }),
+          vizJob({ id: 11, suggestionId: 1, ...FAILED, error: "prva greška" }),
+          vizJob({ id: 10, suggestionId: 2, ...FAILED, error: "druga greška" }),
+        ]}
+        progress={new Map()}
+        now={NOW}
+        vizConcepts={
+          new Map([
+            [1, "Sharding"],
+            [2, "Replikacija"],
+          ])
+        }
+      />,
+    );
+    expect(container.querySelectorAll("details")).toHaveLength(1);
+    expect(screen.getByText("prva greška")).toBeInTheDocument();
+    expect(screen.getByText("druga greška")).toBeInTheDocument();
+    expect(screen.getAllByText(/Vizualizacija: Sharding/)).toHaveLength(2);
   });
 });

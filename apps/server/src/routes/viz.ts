@@ -2,15 +2,21 @@ import type { FastifyPluginAsync } from "fastify";
 import {
   CreateVizSuggestionInput,
   SelectVizSuggestionsInput,
+  type CourseVisualization,
+  type VisualizationDetail,
   type VisualizationSummary,
   type VizSuggestion,
 } from "@studdy/shared";
 import type { Coordinator } from "../agents/coordinator.js";
 import type { Db } from "../db/client.js";
 import { DOMAIN_EVENTS, type VizSelectedPayload } from "../pipeline/events.js";
+import { getCourse } from "../repositories/courses.js";
 import { getClassStatus } from "../repositories/lessons.js";
 import {
   addUserVizSuggestion,
+  getVisualizationDetail,
+  getVisualizationHtml,
+  listCourseVisualizations,
   listVisualizations,
   listVizSuggestions,
   selectVizSuggestions,
@@ -22,6 +28,19 @@ export interface VizRouteOptions {
   /** Without it, selecting works but no `viz.selected` event is emitted. */
   coordinator?: Coordinator;
 }
+
+/**
+ * Visualizations are model-written pages, so they run in a sandbox (opaque origin, so no access
+ * to the app's cookies, storage or API) with no network access of any kind.
+ */
+export const VIZ_PAGE_HEADERS = {
+  "content-type": "text/html; charset=utf-8",
+  "content-security-policy":
+    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox allow-scripts",
+  "x-content-type-options": "nosniff",
+  "referrer-policy": "no-referrer",
+  "cache-control": "no-store",
+} as const;
 
 interface ClassParams {
   classId: string;
@@ -45,6 +64,33 @@ export const vizRoutes: FastifyPluginAsync<VizRouteOptions> = async (app, { db, 
     async (request): Promise<VisualizationSummary[]> =>
       listVisualizations(db, requireClass(request.params.classId)),
   );
+
+  app.get<{ Params: { courseId: string } }>(
+    "/api/courses/:courseId/visualizations",
+    async (request): Promise<CourseVisualization[]> => {
+      const courseId = parseId("courseId", request.params.courseId);
+      if (!getCourse(db, courseId)) throw notFound("Course");
+      return listCourseVisualizations(db, courseId);
+    },
+  );
+
+  app.get<{ Params: { id: string } }>(
+    "/api/visualizations/:id",
+    async (request): Promise<VisualizationDetail> => {
+      const found = getVisualizationDetail(db, parseId("id", request.params.id));
+      if (!found) throw notFound("Visualization");
+      return found;
+    },
+  );
+
+  // Outside /api: this is the page itself, loaded in a sandboxed iframe or its own window.
+  app.get<{ Params: { id: string } }>("/viz/:id", async (request, reply) => {
+    // A malformed id is just a page that does not exist.
+    const id = /^\d+$/.test(request.params.id) ? Number(request.params.id) : 0;
+    const html = getVisualizationHtml(db, id);
+    if (html === undefined) throw notFound("Visualization");
+    return reply.headers(VIZ_PAGE_HEADERS).send(html);
+  });
 
   app.post<{ Params: ClassParams }>(
     "/api/classes/:classId/viz-suggestions",

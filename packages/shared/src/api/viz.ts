@@ -53,3 +53,22 @@ export const VisualizationSummary = z.object({
   createdAt: z.string(),
 });
 export type VisualizationSummary = z.infer<typeof VisualizationSummary>;
+
+/** A visualization in a course-wide list: the summary plus the class it belongs to. */
+export const CourseVisualization = VisualizationSummary.extend({
+  classNumber: z.number().int(),
+  className: z.string(),
+});
+export type CourseVisualization = z.infer<typeof CourseVisualization>;
+
+/** One visualization with its context, for its page. The HTML is served separately at `/viz/:id`. */
+export const VisualizationDetail = VisualizationSummary.extend({
+  className: z.string(),
+  classNumber: z.number().int(),
+  courseId: z.number().int(),
+  courseName: z.string(),
+  /** From the suggestion; null when it was deleted. */
+  concept: z.string().nullable(),
+  misconception: z.string().nullable(),
+});
+export type VisualizationDetail = z.infer<typeof VisualizationDetail>;

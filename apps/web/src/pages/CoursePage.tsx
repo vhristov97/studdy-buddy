@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
-import type { ClassSummary, CourseDetail, QuizSummary } from "@studdy/shared";
+import type { ClassSummary, CourseDetail, CourseVisualization, QuizSummary } from "@studdy/shared";
 import { ApiError } from "../api/client";
 import {
   useCourse,
   useCourseQuizzes,
+  useCourseVisualizations,
   useCreateClass,
   useDeleteCourse,
   useUpdateCourse,
@@ -91,6 +92,9 @@ function CourseView({ course }: { course: CourseDetail }) {
 
       <h2 className={styles.sectionHeading}>Kvizovi</h2>
       <QuizList courseId={course.id} />
+
+      <h2 className={styles.sectionHeading}>Vizualizacije</h2>
+      <VisualizationList courseId={course.id} />
 
       <h2 className={styles.sectionHeading}>Dodaj predavanje</h2>
       <ClassForm
@@ -201,6 +205,39 @@ function QuizItem({ quiz }: { quiz: QuizSummary }) {
       <p className={styles.counts}>
         {countQuestions(quiz.questionCount)} · {formatDate(quiz.createdAt)}
       </p>
+    </li>
+  );
+}
+
+function VisualizationList({ courseId }: { courseId: number }) {
+  const query = useCourseVisualizations(courseId);
+  if (query.isPending) return <Spinner />;
+  if (query.isError) return <ErrorMessage>Vizualizacije se nisu učitale.</ErrorMessage>;
+  if (query.data.length === 0) {
+    return (
+      <EmptyState message="Još nema vizualizacija. Teme biraš na stranici predavanja, posle objedinjenih beleški." />
+    );
+  }
+  return (
+    <ul className={styles.classes}>
+      {query.data.map((item) => (
+        <VisualizationItem key={item.id} viz={item} />
+      ))}
+    </ul>
+  );
+}
+
+function VisualizationItem({ viz }: { viz: CourseVisualization }) {
+  return (
+    <li className={styles.classItem}>
+      <div className={styles.classMain}>
+        <Link to={`/vizualizacije/${viz.id}`} className={styles.classLink}>
+          {viz.title}
+        </Link>
+        <span className={styles.counts}>
+          {formatClassNumber(viz.classNumber)} — {viz.className}
+        </span>
+      </div>
     </li>
   );
 }

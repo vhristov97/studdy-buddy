@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import type { ClassStatus, GenerationJob, QuizSummary } from "@studdy/shared";
 import { ApiError } from "../api/client";
 import { useClassEvents } from "../api/events";
-import { useClassJobs, useCourseQuizzes, useRegenerateQuiz } from "../api/hooks";
-import { groupJobs, JOB_KIND_LABELS, mergeJobs, stageLabel } from "../lib/pipeline";
+import { useClassJobs, useCourseQuizzes, useRegenerateQuiz, useVizSuggestions } from "../api/hooks";
+import { groupJobs, JOB_KIND_LABELS, jobLabel, mergeJobs, stageLabel } from "../lib/pipeline";
 import { countQuestions, formatCount, formatDuration, plural } from "../lib/format";
 import { Button } from "./Button";
 import { ErrorMessage } from "./ErrorMessage";
@@ -46,6 +46,12 @@ export function PipelinePanel({ classId, courseId, classStatus, onRetry, retryin
   const startQuiz = useRegenerateQuiz(classId);
   const latestQuiz = jobs.find((job) => job.kind === "quiz");
   const quizzes = useCourseQuizzes(courseId, latestQuiz?.status === "succeeded");
+  const hasVizJobs = jobs.some((job) => job.kind === "viz");
+  const suggestions = useVizSuggestions(classId, hasVizJobs);
+  const vizConcepts = useMemo(
+    () => new Map((suggestions.data ?? []).map((item) => [item.id, item.concept])),
+    [suggestions.data],
+  );
 
   if (jobs.length === 0) return null;
   return (
@@ -53,6 +59,7 @@ export function PipelinePanel({ classId, courseId, classStatus, onRetry, retryin
       jobs={jobs}
       progress={live.progress}
       now={now}
+      vizConcepts={vizConcepts}
       onRetry={classStatus === "failed" ? onRetry : undefined}
       retrying={retrying}
       releasedQuiz={quizzes.data?.find((quiz) => quiz.classId === classId)}
@@ -72,6 +79,8 @@ interface StagesProps {
   jobs: readonly GenerationJob[];
   progress: ReadonlyMap<number, number>;
   now: number;
+  /** Topic names by suggestion id, for the labels of `viz` rows. */
+  vizConcepts?: ReadonlyMap<number, string>;
   onRetry?: () => void;
   retrying?: boolean;
   /** The released quiz of this class, if known; shown on a succeeded quiz job. */
@@ -89,6 +98,7 @@ export function PipelineStages({
   jobs,
   progress,
   now,
+  vizConcepts,
   onRetry,
   retrying,
   releasedQuiz,
@@ -113,11 +123,14 @@ export function PipelineStages({
       </h2>
       <div aria-live="polite">
         <ul className={styles.stages}>
-          {groups.map(({ kind, latest, earlier }) => (
-            <li key={kind} className={styles.stage}>
+          {groups.map(({ kind, suggestionId, latest, earlier }) => (
+            <li
+              key={suggestionId === null ? kind : `${kind}:${suggestionId}`}
+              className={styles.stage}
+            >
               <JobRow
                 job={latest}
-                label={JOB_KIND_LABELS[kind]}
+                label={jobLabel(latest, vizConcepts)}
                 chars={progress.get(latest.id)}
                 now={now}
                 released={kind === "quiz" ? releasedQuiz : undefined}
@@ -141,7 +154,7 @@ export function PipelineStages({
                   <ul className={styles.stages}>
                     {earlier.map((job) => (
                       <li key={job.id}>
-                        <JobRow job={job} label={JOB_KIND_LABELS[kind]} now={now} />
+                        <JobRow job={job} label={jobLabel(job, vizConcepts)} now={now} />
                       </li>
                     ))}
                   </ul>

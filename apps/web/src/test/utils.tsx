@@ -12,6 +12,10 @@ import type {
   MaterialSummary,
   TopicEvent,
   TopicView,
+  CourseVisualization,
+  VisualizationDetail,
+  VisualizationSummary,
+  VizSuggestion,
 } from "@studdy/shared";
 import { App } from "../App";
 
@@ -169,5 +173,54 @@ export const lessonView = (over: Partial<LessonView> = {}): LessonView => ({
   bodyMd: "## Uvod\n\n- (P) Predavač je rekao da je to važno.\n",
   createdAt: "2026-01-01T10:05:00.000Z",
   topics: [topic()],
+  ...over,
+});
+
+export const vizSuggestionFixture = (over: Partial<VizSuggestion> = {}): VizSuggestion => ({
+  id: 1,
+  classId: 5,
+  concept: "Sharding",
+  section: "2.1 Particionisanje",
+  misconception: "Shard je kopija podataka.",
+  summary: "Istraži kako se podaci raspoređuju po čvorovima.",
+  controls: ["Broj čvorova"],
+  scenarios: ["Dodavanje čvora"],
+  origin: "agent",
+  selected: false,
+  createdAt: "2026-01-01T10:06:00.000Z",
+  ...over,
+});
+
+export const visualizationFixture = (
+  over: Partial<VisualizationSummary> = {},
+): VisualizationSummary => ({
+  id: 7,
+  classId: 5,
+  suggestionId: 1,
+  slug: "sharding",
+  title: "Sharding pod lupom",
+  createdAt: "2026-01-01T11:00:00.000Z",
+  ...over,
+});
+
+export const courseVisualization = (
+  over: Partial<CourseVisualization> = {},
+): CourseVisualization => ({
+  ...visualizationFixture(),
+  classNumber: 1,
+  className: "Uvod",
+  ...over,
+});
+
+export const visualizationDetail = (
+  over: Partial<VisualizationDetail> = {},
+): VisualizationDetail => ({
+  ...visualizationFixture(),
+  className: "Uvod",
+  classNumber: 1,
+  courseId: 1,
+  courseName: "ASVSP",
+  concept: "Sharding",
+  misconception: "Shard je kopija podataka.",
   ...over,
 });

@@ -7,6 +7,8 @@ import { resolveApiPort } from "./devProxy";
 /** Repo root (apps/web -> repo root), where the shared `.env` lives. */
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
+const apiTarget = `http://127.0.0.1:${resolveApiPort(REPO_ROOT)}`;
+
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -14,7 +16,8 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
-      "/api": `http://127.0.0.1:${resolveApiPort(REPO_ROOT)}`,
+      "/api": apiTarget,
+      "/viz": apiTarget,
     },
   },
   build: {

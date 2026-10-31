@@ -14,6 +14,17 @@ export interface ClassEvents {
 const NO_JOBS: ReadonlyMap<number, GenerationJob> = new Map();
 const NO_PROGRESS: ReadonlyMap<number, number> = new Map();
 
+/** The jobs list with `job` inserted or replaced, newest first; a finished job stays finished. */
+function upsertJob(
+  current: ClassJobs["jobs"] | undefined,
+  job: GenerationJob,
+): ClassJobs["jobs"] | undefined {
+  if (!current) return current;
+  const existing = current.find((item) => item.id === job.id);
+  if (existing && existing.status !== "running" && job.status === "running") return current;
+  return [...current.filter((item) => item.id !== job.id), job].sort((a, b) => b.id - a.id);
+}
+
 function parse(event: Event): PipelineEvent | null {
   try {
     return JSON.parse((event as MessageEvent<string>).data) as PipelineEvent;
@@ -57,6 +68,11 @@ export function useClassEvents(classId: number, enabled: boolean): ClassEvents {
         (known ? known.status !== job.status : cachedJob?.status !== job.status) ||
         (lastStatus.current ?? cachedClass?.status) !== classStatus;
       seen.current.set(job.id, job);
+      // Put the job in the query cache too, so every view of this class's jobs (the panel, the
+      // visualizations section) updates live without its own stream.
+      client.setQueryData<ClassJobs["jobs"]>(queryKeys.classJobs(classId), (current) =>
+        upsertJob(current, job),
+      );
       lastStatus.current = classStatus;
       setState((current) => ({ ...current, jobs: new Map(seen.current) }));
       if (changed) void invalidateClassAndCourse(client, classId);

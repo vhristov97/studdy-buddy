@@ -6,6 +6,8 @@ import type {
   CourseSummary,
   CreateClassInput,
   CreateCourseInput,
+  CreateVizSuggestionInput,
+  CourseVisualization,
   ClassJobs,
   GenerationJob,
   LessonView,
@@ -18,6 +20,9 @@ import type {
   SubmissionSummary,
   UpdateClassInput,
   UpdateCourseInput,
+  VisualizationDetail,
+  VisualizationSummary,
+  VizSuggestion,
 } from "@studdy/shared";
 import { apiDelete, apiGet, apiGetText, apiPatch, apiPost, apiUpload } from "./client";
 import { queryKeys } from "./keys";
@@ -67,6 +72,40 @@ export function useClassJobs(classId: number, enabled = true) {
     queryKey: queryKeys.classJobs(classId),
     queryFn: async () => (await apiGet<ClassJobs>(`/api/classes/${classId}/jobs`)).jobs,
     enabled,
+  });
+}
+
+/** Visualization topics of a class: the agent's suggestions and the student's own. */
+export function useVizSuggestions(classId: number, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.classVizSuggestions(classId),
+    queryFn: () => apiGet<VizSuggestion[]>(`/api/classes/${classId}/viz-suggestions`),
+    enabled,
+  });
+}
+
+/** Released visualizations of a class, oldest first. */
+export function useClassVisualizations(classId: number, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.classVisualizations(classId),
+    queryFn: () => apiGet<VisualizationSummary[]>(`/api/classes/${classId}/visualizations`),
+    enabled,
+  });
+}
+
+/** Released visualizations of every class of a course. */
+export function useCourseVisualizations(courseId: number) {
+  return useQuery({
+    queryKey: queryKeys.courseVisualizations(courseId),
+    queryFn: () => apiGet<CourseVisualization[]>(`/api/courses/${courseId}/visualizations`),
+  });
+}
+
+/** One visualization with its context; the page itself is served at /viz/:id. */
+export function useVisualization(id: number) {
+  return useQuery({
+    queryKey: queryKeys.visualization(id),
+    queryFn: () => apiGet<VisualizationDetail>(`/api/visualizations/${id}`),
   });
 }
 
@@ -239,5 +278,45 @@ export function useSubmitQuiz(quizId: number) {
     mutationFn: (answers: SubmissionAnswers) =>
       apiPost<SubmissionDetail>(`/api/quizzes/${quizId}/submissions`, { answers }),
     onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.quizSubmissions(quizId) }),
+  });
+}
+
+/** Adds a visualization topic of the student's own. */
+export function useCreateVizSuggestion(classId: number) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateVizSuggestionInput) =>
+      apiPost<VizSuggestion>(`/api/classes/${classId}/viz-suggestions`, input),
+    onSettled: () => client.invalidateQueries({ queryKey: queryKeys.classVizSuggestions(classId) }),
+  });
+}
+
+/** Starts building the chosen suggestions (one job each). */
+export function useSelectVizSuggestions(classId: number) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: number[]) =>
+      apiPost<VizSuggestion[]>(`/api/classes/${classId}/viz-suggestions/select`, { ids }),
+    // The class prefix also covers the jobs, which show up a moment after the POST.
+    onSettled: () => client.invalidateQueries({ queryKey: queryKeys.class(classId) }),
+  });
+}
+
+/** Asks the identifier for topics again (first time or after a failure). */
+export function useRegenerateVizTopics(classId: number) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiPost<GenerationJob>(`/api/classes/${classId}/viz-topics/regenerate`),
+    onSettled: () => client.invalidateQueries({ queryKey: queryKeys.class(classId) }),
+  });
+}
+
+/** Plans and builds a selected visualization again from scratch after a failure. */
+export function useRegenerateViz(classId: number) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (suggestionId: number) =>
+      apiPost<GenerationJob>(`/api/viz-suggestions/${suggestionId}/regenerate`),
+    onSettled: () => client.invalidateQueries({ queryKey: queryKeys.class(classId) }),
   });
 }

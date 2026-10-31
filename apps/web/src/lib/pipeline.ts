@@ -48,16 +48,43 @@ export function mergeJobs(
 
 export interface JobGroup {
   kind: JobKind;
+  /** The visualization suggestion of a `viz` group; null for other kinds. */
+  suggestionId: number | null;
   latest: GenerationJob;
   /** Older attempts, newest first. */
   earlier: GenerationJob[];
 }
 
-/** One group per kind, in pipeline order (lesson first). */
+/**
+ * One group per kind, in pipeline order (lesson first). `viz` jobs build one visualization each,
+ * so they get a group per suggestion (by suggestion id) instead of one for the kind.
+ */
 export function groupJobs(jobs: readonly GenerationJob[]): JobGroup[] {
-  const byKind = new Map<JobKind, GenerationJob[]>();
-  for (const job of jobs) byKind.set(job.kind, [...(byKind.get(job.kind) ?? []), job]);
-  return [...byKind.entries()]
-    .map(([kind, list]) => ({ kind, latest: list[0]!, earlier: list.slice(1) }))
-    .sort((a, b) => JOB_KIND_ORDER.indexOf(a.kind) - JOB_KIND_ORDER.indexOf(b.kind));
+  const byKey = new Map<string, GenerationJob[]>();
+  for (const job of jobs) {
+    const key = job.kind === "viz" ? `viz:${job.suggestionId}` : job.kind;
+    byKey.set(key, [...(byKey.get(key) ?? []), job]);
+  }
+  return [...byKey.values()]
+    .map((list) => ({
+      kind: list[0]!.kind,
+      suggestionId: list[0]!.kind === "viz" ? list[0]!.suggestionId : null,
+      latest: list[0]!,
+      earlier: list.slice(1),
+    }))
+    .sort(
+      (a, b) =>
+        JOB_KIND_ORDER.indexOf(a.kind) - JOB_KIND_ORDER.indexOf(b.kind) ||
+        (a.suggestionId ?? 0) - (b.suggestionId ?? 0),
+    );
+}
+
+/** Row label of a job; a `viz` job names its topic once the suggestions are known. */
+export function jobLabel(
+  job: Pick<GenerationJob, "kind" | "suggestionId">,
+  concepts?: ReadonlyMap<number, string>,
+): string {
+  if (job.kind !== "viz") return JOB_KIND_LABELS[job.kind];
+  const concept = job.suggestionId === null ? undefined : concepts?.get(job.suggestionId);
+  return concept ? `${JOB_KIND_LABELS.viz}: ${concept}` : JOB_KIND_LABELS.viz;
 }

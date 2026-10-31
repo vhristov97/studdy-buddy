@@ -6,6 +6,7 @@ import { CoursesPage } from "./pages/CoursesPage";
 import { LessonPage } from "./pages/LessonPage";
 import { MaterialPage } from "./pages/MaterialPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { VisualizationPage } from "./pages/VisualizationPage";
 import { CourseQuizzesPage, QuizPage } from "./pages/QuizPage";
 
 export function App() {
@@ -19,6 +20,7 @@ export function App() {
         <Route path="kvizovi/:quizId/predaje/:submissionId" element={<QuizPage />} />
         <Route path="predavanja/:classId" element={<ClassPage />} />
         <Route path="predavanja/:classId/lekcija" element={<LessonPage />} />
+        <Route path="vizualizacije/:vizId" element={<VisualizationPage />} />
         <Route path="materijali/:materialId" element={<MaterialPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>

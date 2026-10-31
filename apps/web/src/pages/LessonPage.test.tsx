@@ -8,6 +8,7 @@ import {
   renderAt,
   topic,
   topicEvent,
+  visualizationFixture,
 } from "../test/utils";
 
 const BODY = [
@@ -80,5 +81,49 @@ describe("LessonPage", () => {
     mockApi({});
     renderAt("/predavanja/99/lekcija");
     expect(await screen.findByRole("heading", { name: "Ne postoji" })).toBeInTheDocument();
+  });
+
+  it("links the visualizations of the class near the top", async () => {
+    mockApi({
+      "GET /api/classes/5": () => classDetail({ status: "ready" }),
+      "GET /api/classes/5/lesson": () => lessonView(),
+      "GET /api/classes/5/jobs": () => ({ jobs: [] }),
+      "GET /api/classes/5/viz-suggestions": () => [],
+      "GET /api/classes/5/visualizations": () => [
+        visualizationFixture({ id: 7, title: "Sharding pod lupom" }),
+        visualizationFixture({ id: 8, title: "Replikacija na delu" }),
+      ],
+    });
+    renderAt("/predavanja/5/lekcija");
+    const box = await screen.findByRole("region", { name: "Vizualizacije za ovu lekciju" });
+    expect(within(box).getByRole("link", { name: "Sharding pod lupom" })).toHaveAttribute(
+      "href",
+      "/vizualizacije/7",
+    );
+    expect(within(box).getByRole("link", { name: "Replikacija na delu" })).toHaveAttribute(
+      "href",
+      "/vizualizacije/8",
+    );
+    // The compact selection section is there too, without the form for own topics.
+    expect(screen.getByRole("region", { name: "Vizualizacije" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Dodaj temu" })).not.toBeInTheDocument();
+    // The box comes before the lesson.
+    const lesson = await screen.findByRole("article", { name: "Objedinjene beleške" });
+    expect(box.compareDocumentPosition(lesson) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("shows no visualizations box when there are none", async () => {
+    mockApi({
+      "GET /api/classes/5": () => classDetail({ status: "ready" }),
+      "GET /api/classes/5/lesson": () => lessonView(),
+      "GET /api/classes/5/jobs": () => ({ jobs: [] }),
+      "GET /api/classes/5/viz-suggestions": () => [],
+      "GET /api/classes/5/visualizations": () => [],
+    });
+    renderAt("/predavanja/5/lekcija");
+    await screen.findByRole("article", { name: "Objedinjene beleške" });
+    expect(
+      screen.queryByRole("region", { name: "Vizualizacije za ovu lekciju" }),
+    ).not.toBeInTheDocument();
   });
 });

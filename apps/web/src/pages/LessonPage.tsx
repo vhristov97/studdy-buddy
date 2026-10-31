@@ -9,6 +9,8 @@ import { LessonMarkdown } from "../components/LessonMarkdown";
 import { LessonTag } from "../components/LessonTag";
 import { PipelinePanel } from "../components/PipelinePanel";
 import { QueryBoundary } from "../components/QueryBoundary";
+import { VizSection } from "../components/VizSection";
+import { ClassVisualizationLinks } from "../components/VisualizationLinks";
 import { Spinner } from "../components/Spinner";
 import { TrackingTable } from "../components/TrackingTable";
 import { formatClassNumber } from "../lib/format";
@@ -73,6 +75,8 @@ function LessonView({ detail }: { detail: ClassDetail }) {
         </details>
       )}
 
+      {detail.status === "ready" && <ClassVisualizationLinks classId={detail.id} />}
+
       {lesson.isPending ? (
         <Spinner />
       ) : lesson.isError ? (
@@ -98,6 +102,10 @@ function LessonView({ detail }: { detail: ClassDetail }) {
             <TrackingTable topics={lesson.data.topics} />
           </section>
         </>
+      )}
+
+      {detail.status === "ready" && (
+        <VizSection key={detail.id} classId={detail.id} compact classPath={classPath} />
       )}
     </>
   );

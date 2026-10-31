@@ -19,6 +19,7 @@ import { ErrorMessage } from "../components/ErrorMessage";
 import { MaterialItem } from "../components/MaterialItem";
 import { PipelinePanel } from "../components/PipelinePanel";
 import { QueryBoundary } from "../components/QueryBoundary";
+import { VizSection } from "../components/VizSection";
 import { UploadZone } from "../components/UploadZone";
 import { canGenerate } from "../lib/canGenerate";
 import { formatClassNumber } from "../lib/format";
@@ -151,6 +152,8 @@ function ClassView({ detail }: { detail: ClassDetail }) {
         )}
         {generate.isError && <ErrorMessage>{generateErrorText(generate.error)}</ErrorMessage>}
       </section>
+
+      {detail.status === "ready" && <VizSection key={detail.id} classId={detail.id} />}
 
       <Dialog open={editing} onClose={() => setEditing(false)} title="Izmeni predavanje">
         <ClassForm
