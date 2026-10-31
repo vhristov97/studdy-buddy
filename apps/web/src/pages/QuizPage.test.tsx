@@ -545,6 +545,24 @@ describe("QuizPage player", () => {
       expect(screen.getByLabelText("Kviz")).toHaveValue("2");
     });
 
+    it("marks cumulative quizzes, which have no class, in the picker", async () => {
+      mockApi({
+        "GET /api/courses/1/quizzes": () => [
+          summary({ id: 4, code: "K1", title: "Pregled", classId: null }),
+          summary({ id: 1 }),
+        ],
+        "GET /api/quizzes/4": () => quiz({ id: 4, code: "K1", title: "Pregled" }),
+        "GET /api/quizzes/4/submissions": () => [],
+      });
+      renderAt("/kursevi/1/kvizovi");
+      const select = await screen.findByLabelText("Kviz");
+      expect(
+        within(select)
+          .getAllByRole("option")
+          .map((o) => o.textContent),
+      ).toEqual(["K1 — Pregled (kumulativni)", "P01 — Uvod u velike podatke"]);
+    });
+
     it("says so when the course has no quizzes", async () => {
       mockApi({ "GET /api/courses/1/quizzes": () => [] });
       renderAt("/kursevi/1/kvizovi");

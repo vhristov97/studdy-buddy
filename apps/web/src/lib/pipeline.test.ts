@@ -93,7 +93,30 @@ describe("groupJobs viz", () => {
   });
 });
 
+describe("groupJobs cumulative quizzes", () => {
+  it("keeps K jobs apart from the class's own quiz, one group per code, after the quiz", () => {
+    const groups = groupJobs([
+      job({ id: 9, kind: "quiz", quizCode: "K10" }),
+      job({ id: 8, kind: "quiz", quizCode: "K2" }),
+      job({ id: 7, kind: "quiz", quizCode: "K2" }),
+      job({ id: 3, kind: "quiz", quizCode: null }),
+      job({ id: 1 }),
+    ]);
+    expect(groups.map((g) => [g.kind, g.quizCode, g.latest.id, g.earlier.length])).toEqual([
+      ["lesson", null, 1, 0],
+      ["quiz", null, 3, 0],
+      ["quiz", "K2", 8, 1],
+      ["quiz", "K10", 9, 0],
+    ]);
+  });
+});
+
 describe("jobLabel", () => {
+  it("labels a cumulative quiz job with its code", () => {
+    expect(jobLabel(job({ kind: "quiz", quizCode: "K1" }))).toBe("Kumulativni test K1");
+    expect(jobLabel(job({ kind: "quiz", quizCode: null }))).toBe("Kviz");
+  });
+
   it("names the topic of a viz job when known", () => {
     const concepts = new Map([[1, "Sharding"]]);
     expect(jobLabel(job({ kind: "viz", suggestionId: 1 }), concepts)).toBe(

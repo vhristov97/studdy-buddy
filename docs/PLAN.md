@@ -127,7 +127,7 @@ Dependencies: M0 → M1 → M2 → M3, then M4 ∥ M7 (M5 can start once the M4 
 - [x] M7.3 Viz serving at `/viz/:id` with a strict CSP in a sandboxed iframe, links from the lesson and the registry.
 
 ### M8: Cumulative reviews
-- [ ] M8.1 Cadence detection: offer `K<n>` when the class count reaches the cadence. The planner input is the covered lessons + backlog items due for that K + weak topics. It reuses the M4 build/review loop. Results go to the schedule and quiz history.
+- [x] M8.1 Cadence detection: offer `K<n>` when the class count reaches the cadence. The planner input is the covered lessons + backlog items due for that K + weak topics. It reuses the M4 build/review loop. Results go to the schedule and quiz history.
 
 ### M9: Import + export
 - [ ] M9.1 Import of existing course data (lessons, results, progress, quizzes, visualizations, submission history). Needs a look at the real source folders first; probably an import agent for the Markdown progress/lesson tables.

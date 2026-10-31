@@ -447,6 +447,92 @@ describe("PipelinePanel", () => {
   });
 });
 
+describe("PipelineStages cumulative rows", () => {
+  const kJob = (over: Parameters<typeof job>[0] = {}) =>
+    quizJob({ id: 5, quizCode: "K1", ...over });
+  const labelsOf = (container: HTMLElement) =>
+    [...container.querySelectorAll("strong")].map((el) => el.textContent);
+
+  it("shows a K job as its own row, apart from the class's own quiz", () => {
+    const { container } = render(
+      <PipelineStages
+        jobs={[kJob(), quizJob({ id: 4, ...FAILED, error: "lekcija" }), lessonDone({ id: 1 })]}
+        progress={new Map()}
+        now={NOW}
+        onStartQuiz={vi.fn()}
+      />,
+    );
+    expect(labelsOf(container)).toEqual(["Objedinjene beleške", "Kviz", "Kumulativni test K1"]);
+    expect(container.querySelectorAll("details")).toHaveLength(0);
+  });
+
+  it("offers the class's first quiz even when only a K job exists", () => {
+    render(
+      <PipelineStages
+        jobs={[kJob(), lessonDone({ id: 1 })]}
+        progress={new Map()}
+        now={NOW}
+        onStartQuiz={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Napravi kviz" })).toBeInTheDocument();
+  });
+
+  it("ignores a failed K job for the lesson quiz button", () => {
+    const onStartQuiz = vi.fn();
+    render(
+      <PipelineStages
+        jobs={[
+          kJob({ ...FAILED, error: "K greška" }),
+          quizJob({ id: 4, status: "succeeded", finishedAt: "2026-01-01T10:00:55.000Z" }),
+          lessonDone({ id: 1 }),
+        ]}
+        progress={new Map()}
+        now={NOW}
+        onStartQuiz={onStartQuiz}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Napravi kviz ispočetka" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Napravi kviz" })).toBeNull();
+  });
+
+  it("rebuilds a failed K job with its code", async () => {
+    const onStartQuiz = vi.fn();
+    const onRebuildCumulative = vi.fn();
+    render(
+      <PipelineStages
+        jobs={[
+          kJob({ ...FAILED, error: "K greška" }),
+          quizJob({ id: 4, status: "succeeded", finishedAt: "2026-01-01T10:00:55.000Z" }),
+          lessonDone({ id: 1 }),
+        ]}
+        progress={new Map()}
+        now={NOW}
+        onStartQuiz={onStartQuiz}
+        onRebuildCumulative={onRebuildCumulative}
+        rebuildCumulativeError={{ code: "K1", message: "K1 već postoji." }}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Napravi ispočetka" }));
+    expect(onRebuildCumulative).toHaveBeenCalledWith("K1");
+    expect(onStartQuiz).not.toHaveBeenCalled();
+    expect(screen.getByText("K1 već postoji.")).toBeInTheDocument();
+  });
+
+  it("links a succeeded K job to its released quiz", () => {
+    render(
+      <PipelineStages
+        jobs={[kJob({ status: "succeeded", finishedAt: "2026-01-01T10:00:55.000Z" })]}
+        progress={new Map()}
+        now={NOW}
+        releasedQuiz={quizSummary({ id: 1, code: "P01", classId: 5 })}
+        cumulativeQuizzes={[quizSummary({ id: 9, code: "K1", classId: null })]}
+      />,
+    );
+    expect(screen.getByRole("link", { name: /^K1/ })).toHaveAttribute("href", "/kvizovi/9");
+  });
+});
+
 describe("PipelineStages viz rows", () => {
   const vizJob = (over: Parameters<typeof job>[0] = {}) =>
     job({ id: 5, kind: "viz", stage: "viz-planner", suggestionId: 1, ...over });

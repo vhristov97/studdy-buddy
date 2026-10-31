@@ -6,6 +6,7 @@ import {
   useCourse,
   useCourseQuizzes,
   useCourseVisualizations,
+  useCumulativeStatus,
   useCreateClass,
   useDeleteCourse,
   useUpdateCourse,
@@ -14,6 +15,7 @@ import { Badge, StatusBadge } from "../components/Badge";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { Button } from "../components/Button";
 import { ClassForm } from "../components/ClassForm";
+import { CumulativeButton } from "../components/CumulativeButton";
 import { ConfirmDialog, Dialog } from "../components/Dialog";
 import { CourseForm } from "../components/CourseForm";
 import { EmptyState } from "../components/EmptyState";
@@ -95,6 +97,7 @@ function CourseView({ course }: { course: CourseDetail }) {
 
       <h2 className={styles.sectionHeading}>Kvizovi</h2>
       <QuizList courseId={course.id} />
+      <CumulativeLine courseId={course.id} />
 
       <h2 className={styles.sectionHeading}>Vizualizacije</h2>
       <VisualizationList courseId={course.id} />
@@ -188,12 +191,45 @@ function QuizList({ courseId }: { courseId: number }) {
   );
 }
 
+/** The cumulative review that is due, or a manual trigger for a course without a cadence. */
+function CumulativeLine({ courseId }: { courseId: number }) {
+  const query = useCumulativeStatus(courseId);
+  const status = query.data;
+  if (!status) return null;
+  if (status.due) {
+    return (
+      <p className={styles.cumulativeLine}>
+        <strong>{status.due.code} je na redu</strong>
+        <span className={styles.counts}>(predavanja 1–{status.due.coversThrough})</span>
+        <CumulativeButton
+          courseId={courseId}
+          code={status.due.code}
+          label={`Napravi ${status.due.code}`}
+        />
+      </p>
+    );
+  }
+  if (status.cadence === null && status.readyClassCount >= 1) {
+    return (
+      <p className={styles.cumulativeLine}>
+        <CumulativeButton
+          courseId={courseId}
+          label="Napravi kumulativni test"
+          variant="secondary"
+        />
+      </p>
+    );
+  }
+  return null;
+}
+
 function QuizItem({ quiz }: { quiz: QuizSummary }) {
   return (
     <li className={styles.quizItem}>
       <Link to={`/kvizovi/${quiz.id}`} className={styles.quizHead}>
         <strong className={styles.quizCode}>{quiz.code}</strong>
         <span className={styles.quizTitle}>{quiz.title}</span>
+        {quiz.classId === null && <Badge tone="info">kumulativni</Badge>}
       </Link>
       <p className={styles.counts}>{quiz.subtitle}</p>
       {quiz.chips.length > 0 && (

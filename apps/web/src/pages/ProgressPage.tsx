@@ -2,18 +2,27 @@ import { Link, useParams } from "react-router";
 import type {
   BacklogReason,
   CourseProgress,
+  CumulativeScheduleEntry,
+  CumulativeScheduleStatus,
   GradingStatus,
   ProgressBacklogItem,
   ProgressQuizHistoryEntry,
   ProgressVisualizationEntry,
 } from "@studdy/shared";
-import { useCourse, useCourseProgress, useGradeSubmission } from "../api/hooks";
+import {
+  useCourse,
+  useCourseProgress,
+  useCumulativeStatus,
+  useGradeSubmission,
+} from "../api/hooks";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { Button } from "../components/Button";
+import { CumulativeButton } from "../components/CumulativeButton";
 import { EmptyState } from "../components/EmptyState";
 import { gradeErrorText } from "../components/GradingStatus";
 import { QueryBoundary } from "../components/QueryBoundary";
 import { RatingChip } from "../components/TrackingTable";
+import { Spinner } from "../components/Spinner";
 import { formatClassNumber, formatDateTime, formatDecimal } from "../lib/format";
 import styles from "./ProgressPage.module.css";
 
@@ -46,22 +55,25 @@ export function ProgressPage() {
             ]}
           />
           <h1 className={styles.title}>Napredak</h1>
-          <ProgressView progress={progress} />
+          <ProgressView courseId={courseId} progress={progress} />
         </>
       )}
     </QueryBoundary>
   );
 }
 
-function ProgressView({ progress }: { progress: CourseProgress }) {
+function ProgressView({ courseId, progress }: { courseId: number; progress: CourseProgress }) {
   return (
     <>
-      <Flags progress={progress} />
+      <Flags courseId={courseId} progress={progress} />
       <Section id="next" title="Sledeće">
         <NextSteps steps={progress.nextSteps} />
       </Section>
       <Section id="backlog" title="Obavezno u K…">
         <Backlog items={progress.backlog} />
+      </Section>
+      <Section id="cumulative" title="Kumulativni testovi">
+        <Cumulative courseId={courseId} entries={progress.cumulative} />
       </Section>
       <Section id="topics" title="Pregled tema">
         <Topics topics={progress.topics} />
@@ -96,12 +108,30 @@ function Section({
   );
 }
 
-function Flags({ progress }: { progress: CourseProgress }) {
-  const { classesWithoutLesson, ungradedSubmissions } = progress.flags;
-  if (classesWithoutLesson.length === 0 && ungradedSubmissions.length === 0) return null;
+function Flags({ courseId, progress }: { courseId: number; progress: CourseProgress }) {
+  const { classesWithoutLesson, ungradedSubmissions, cumulativeDue } = progress.flags;
+  if (
+    classesWithoutLesson.length === 0 &&
+    ungradedSubmissions.length === 0 &&
+    cumulativeDue === null
+  ) {
+    return null;
+  }
   const history = new Map(progress.quizHistory.map((entry) => [entry.submissionId, entry]));
   return (
     <section className={styles.flags} aria-label="Šta čeka">
+      {cumulativeDue && (
+        <div>
+          <h2 className={styles.flagHeading}>
+            {cumulativeDue.code} je na redu (predavanja 1–{cumulativeDue.coversThrough})
+          </h2>
+          <CumulativeButton
+            courseId={courseId}
+            code={cumulativeDue.code}
+            label={`Napravi ${cumulativeDue.code}`}
+          />
+        </div>
+      )}
       {classesWithoutLesson.length > 0 && (
         <div>
           <h2 className={styles.flagHeading}>
@@ -219,6 +249,89 @@ function Backlog({ items }: { items: ProgressBacklogItem[] }) {
         </div>
       ))}
     </div>
+  );
+}
+
+const CUMULATIVE_LABELS: Record<CumulativeScheduleStatus, string> = {
+  due: "na redu",
+  building: "pravi se…",
+  available: "spreman",
+  submitted: "predat — ocenjivanje",
+  graded: "ocenjen",
+};
+
+function Cumulative({
+  courseId,
+  entries,
+}: {
+  courseId: number;
+  entries: CumulativeScheduleEntry[];
+}) {
+  const status = useCumulativeStatus(courseId);
+  const noCadence = status.data?.cadence === null;
+  const canRequest = noCadence && (status.data?.readyClassCount ?? 0) >= 1;
+  return (
+    <>
+      {entries.length > 0 ? (
+        <ul className={styles.history}>
+          {entries.map((entry) => (
+            <CumulativeItem key={entry.code} entry={entry} />
+          ))}
+        </ul>
+      ) : (
+        <EmptyState
+          message={
+            noCadence
+              ? "Kurs nema podešen ritam kumulativnih testova."
+              : "Još nema kumulativnih testova."
+          }
+        />
+      )}
+      {noCadence && entries.length > 0 && (
+        <p className={styles.muted}>Kurs nema podešen ritam kumulativnih testova.</p>
+      )}
+      {canRequest && (
+        <p className={styles.cumulativeAction}>
+          <CumulativeButton
+            courseId={courseId}
+            label="Napravi kumulativni test"
+            variant="secondary"
+          />
+        </p>
+      )}
+    </>
+  );
+}
+
+function CumulativeItem({ entry }: { entry: CumulativeScheduleEntry }) {
+  const code =
+    entry.quizId === null ? (
+      <strong>{entry.code}</strong>
+    ) : (
+      <Link to={`/kvizovi/${entry.quizId}`}>
+        <strong>{entry.code}</strong>
+      </Link>
+    );
+  return (
+    <li className={styles.historyItem}>
+      <div className={styles.historyHead}>
+        {code}
+        {entry.submittedAt && (
+          <span className={styles.muted}>Predat: {formatDateTime(entry.submittedAt)}</span>
+        )}
+      </div>
+      <div className={styles.historyScore}>
+        <span>predavanja 1–{entry.coversThrough}</span>
+        {entry.status === "building" ? (
+          <Spinner label={CUMULATIVE_LABELS.building} />
+        ) : (
+          <span>{CUMULATIVE_LABELS[entry.status]}</span>
+        )}
+        {entry.status === "graded" && entry.totalScore !== null && (
+          <strong>Ukupno: {formatDecimal(entry.totalScore)}</strong>
+        )}
+      </div>
+    </li>
   );
 }
 
