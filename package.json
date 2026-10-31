@@ -21,6 +21,7 @@
     "smoke:agent": "npm run smoke:agent -w @studdy/server --",
     "extract": "npm run extract -w @studdy/server --",
     "lesson:try": "npm run lesson:try -w @studdy/server --",
+    "quiz:try": "npm run quiz:try -w @studdy/server --",
     "db:generate": "npm run db:generate -w @studdy/server",
     "db:migrate": "npm run db:migrate -w @studdy/server",
     "start": "npm run build && npm run start -w @studdy/server"
