@@ -64,6 +64,7 @@ describe("stage helpers with FakeRunner (no API)", () => {
     });
     initAgentRuntime({
       cwd: tmpCwd,
+      repoRoot: tmpCwd,
       runner: new ResilientRunner(inner, { onFailure: publishStageFailed, sleep: async () => {} }),
     });
   });
@@ -195,6 +196,21 @@ describe("stage helpers with FakeRunner (no API)", () => {
     // Let the placeholder answer and any stray rejection surface; vitest fails on unhandled ones.
     await new Promise((r) => setTimeout(r, 20));
     expect(seen).toHaveLength(1);
+  });
+
+  it("accepts a successful answer that looks like the failure placeholder", async () => {
+    responder = () => fakeJsonAnswer({ __stageFailed: true });
+    const result = await runStage(
+      {
+        name: "placeholder-like",
+        instruction: "x",
+        model: "claude-sonnet-5-5",
+        schema: z.object({ __stageFailed: z.boolean() }),
+        schemaName: "placeholder_like",
+      },
+      "go",
+    );
+    expect(result).toEqual({ __stageFailed: true });
   });
 
   it("rejects with timeout and closes the session", async () => {

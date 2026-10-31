@@ -6,7 +6,6 @@ import {
   type Tool,
 } from "@mozaik-ai/core";
 import { z } from "zod";
-import { FAILED_PLACEHOLDER } from "./resilient-runner.js";
 import { STAGE_FAILED, join, leave, runLoop, type StageFailedPayload } from "./runtime.js";
 import { toStructuredOutputSchema } from "./structured-output.js";
 
@@ -215,8 +214,10 @@ export function openStageSession<T>(spec: StageSpec<T>): StageSession<T> {
     }
     if (event.producerId !== agentId || event.type.startsWith("participant.")) return;
     if (event.type === "model.answer") {
+      // ResilientRunner publishes stage.failed (which closes this session) before it returns
+      // its placeholder answer, so a placeholder never reaches here: `closed` drops it above.
       const text = answerText(event);
-      if (text === undefined || text === FAILED_PLACEHOLDER || !pending) return;
+      if (text === undefined || !pending) return;
       onAnswer(pending, text);
       return;
     }

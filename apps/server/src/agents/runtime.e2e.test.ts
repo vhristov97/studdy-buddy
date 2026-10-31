@@ -74,6 +74,7 @@ describe("agent runtime with FakeRunner (no API)", () => {
     inner = new FakeRunner((input, i) => responder(input, i));
     initAgentRuntime({
       cwd: tmpCwd,
+      repoRoot: tmpCwd,
       runner: new ResilientRunner(inner, {
         onFailure: publishStageFailed,
         sleep: async () => {},
@@ -108,8 +109,8 @@ describe("agent runtime with FakeRunner (no API)", () => {
   }
 
   it("is idempotent", () => {
-    const first = initAgentRuntime({ cwd: tmpCwd });
-    expect(initAgentRuntime({ cwd: tmpCwd })).toBe(first);
+    const first = initAgentRuntime({ cwd: tmpCwd, repoRoot: tmpCwd });
+    expect(initAgentRuntime({ cwd: tmpCwd, repoRoot: tmpCwd })).toBe(first);
   });
 
   it("delivers the fake answer as model.answer", async () => {

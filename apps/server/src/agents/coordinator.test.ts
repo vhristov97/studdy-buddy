@@ -42,6 +42,7 @@ describe("Coordinator with FakeRunner (no API)", () => {
     const inner = new FakeRunner((input, i) => responder(input, i));
     initAgentRuntime({
       cwd: tmpCwd,
+      repoRoot: tmpCwd,
       runner: new ResilientRunner(inner, { onFailure: publishStageFailed, sleep: async () => {} }),
     });
   });
@@ -203,5 +204,22 @@ describe("Coordinator with FakeRunner (no API)", () => {
     other.emit("demo.ready", {});
     await new Promise((r) => setTimeout(r, 30));
     expect(calls).toBe(1);
+  });
+
+  it("skips handlers queued before stop() and publishes no handler_failed", async () => {
+    const coordinator = newCoordinator();
+    const observer = newCoordinator();
+    const types: string[] = [];
+    observer.subscribe((e) => types.push(e.type));
+    let calls = 0;
+    coordinator.on("demo.requested", () => {
+      calls++;
+    });
+    coordinator.emit("demo.requested", {});
+    coordinator.stop();
+    await new Promise((r) => setTimeout(r, 30));
+    expect(calls).toBe(0);
+    expect(types).not.toContain(HANDLER_FAILED);
+    expect(logged).toEqual([]);
   });
 });

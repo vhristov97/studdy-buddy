@@ -16,6 +16,7 @@ export interface HandlerFailedPayload {
 
 export interface CoordinatorLogger {
   error(obj: object, msg: string): void;
+  debug?(obj: object, msg: string): void;
 }
 
 export type DomainHandler<P = unknown> = (payload: P, event: SemanticEvent) => Promise<void> | void;
@@ -67,6 +68,10 @@ export class Coordinator {
     this.started = true;
   }
 
+  /**
+   * Stops reacting to events. Handlers already running are not interrupted; handlers queued
+   * by `receive` that have not started yet are skipped (not treated as failures).
+   */
   stop(): void {
     if (!this.started) return;
     this.started = false;
@@ -109,7 +114,16 @@ export class Coordinator {
       if (event.producerId === this.id || event.type === STAGE_FAILED) this.notify(event);
       for (const handler of [...(this.handlers.get(event.type) ?? [])]) {
         void Promise.resolve()
-          .then(() => handler(event.payload, event))
+          .then(() => {
+            if (!this.started) {
+              this.logger.debug?.(
+                { eventType: event.type },
+                "coordinator stopped; handler skipped",
+              );
+              return;
+            }
+            return handler(event.payload, event);
+          })
           .catch((error: unknown) => this.handlerFailed(event.type, error));
       }
     } catch (error) {
