@@ -64,7 +64,7 @@ The agents call Anthropic models through `MODEL_PLANNER` (writing, planning, rev
 
 ## Setup
 
-Requires Node.js 22 or newer and an Anthropic API key.
+Requires Node.js 22 or newer and an Anthropic API key (or a gateway key).
 
 ```bash
 npm install
@@ -73,6 +73,8 @@ npm run dev             # API on :3000, web app on http://127.0.0.1:5173
 ```
 
 `npm start` builds the web app and serves everything from the API server on :3000.
+
+Optionally set `ANTHROPIC_BASE_URL` in `.env` to route the agents through an Anthropic-compatible gateway, such as the hackathon credits gateway (`https://api.app.jigjoy.ai/gateway/anthropic`), and put that gateway's key in `ANTHROPIC_API_KEY`. The gateway sees every prompt, including your study materials.
 
 Data lives in `DATA_DIR` (default `./data`, git-ignored): the SQLite database `app.sqlite` and the uploaded files, stored by content hash. Migrations run automatically at startup.
 
@@ -93,8 +95,7 @@ npm run smoke:agent    # tiny real-API check of the agent stack
 
 ## Privacy
 
-- Course material stays on your machine, except for what is sent to the Anthropic API to generate content.
-- Mozaik's bundled cloud SDK uploads all agent events, including full agent memory, to app.jigjoy.ai if it finds credentials. The server guards against this in two ways:
-  - it refuses to start if `MOZAIK_API_KEY` or `MOZAIK_PROJECT_KEY` is set in the environment or in `.env`;
-  - it points the SDK's paired-machine credentials lookup at `/dev/null`, so a paired `~/.mozaik/credentials.json` is ignored.
-- Still, don't set those keys or pair the machine.
+- Course material stays on your machine, except for what is sent to the Anthropic API (or the gateway in `ANTHROPIC_BASE_URL`) to generate content.
+- Mozaik's bundled cloud SDK uploads all agent events, including full agent memory (your study materials), to app.jigjoy.ai if `MOZAIK_API_KEY` or `MOZAIK_PROJECT_KEY` is set (environment or `.env`) or the machine is paired (`~/.mozaik/credentials.json`).
+- The server refuses to start with those keys present unless you opt in with `MOZAIK_CLOUD_ENABLED=true`. Without the opt-in it also ignores a paired machine's credentials.
+- Tests force telemetry off, so they never upload anything.

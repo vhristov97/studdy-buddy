@@ -54,6 +54,11 @@ process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
 try {
   await app.listen({ host: config.HOST, port: config.PORT });
+  // Host only: the base URL may carry a path or credentials we must not log.
+  app.log.info(
+    { anthropicHost: new URL(config.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com").host },
+    "Anthropic endpoint",
+  );
 } catch (err) {
   app.log.error(err);
   close();

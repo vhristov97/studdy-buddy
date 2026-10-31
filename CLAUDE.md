@@ -90,7 +90,7 @@ Key concepts that shape the architecture:
 - Pass data between agents with `structuredOutput` (JSON schema, `strict: true`) on `runLoop`; the result arrives as JSON text in `model.answer`.
 - Tools are `FunctionTool` objects (`name`, `description`, `parameters`, `strict`, `invoke`), passed both to `createAgent` and to `runLoop`.
 - **Pin `@mozaik-ai/core@4.1.0`** (exact version). 4.2 is considered not stable yet; don't upgrade without the user's approval.
-- The provider is chosen by the `model` string (Anthropic models via `ANTHROPIC_API_KEY` in `.env`). 4.1.0 supports `claude-opus-5-5` and `claude-sonnet-5-5` (function calling, structured output, streaming), even though the docs' models page only lists 4.x models.
+- The provider is chosen by the `model` string (Anthropic models via `ANTHROPIC_API_KEY` in `.env`; an optional `ANTHROPIC_BASE_URL` in `.env` redirects these calls to a gateway, read by the SDK from the environment). 4.1.0 supports `claude-opus-5-5` and `claude-sonnet-5-5` (function calling, structured output, streaming), even though the docs' models page only lists 4.x models.
 - Streaming: `streaming: true` on `runLoop` emits `inference.stream` events, useful for showing pipeline progress in the UI.
 
 Gotchas verified in the 4.1.0 source (details and how we handle them are in `docs/PLAN.md` → Agent runtime):
@@ -98,4 +98,4 @@ Gotchas verified in the 4.1.0 source (details and how we handle them are in `doc
 - An agent's memory context accumulates across `runLoop` calls, so create a fresh agent per job stage.
 - A failing `runLoop` (API error) emits no event; it's an unhandled rejection. We detect failures through a wrapping `InferenceRunner`.
 - `initializeRuntime({ inferenceRunnerConfig: { runner } })` accepts a custom runner; tests use a fake one, not the real API.
-- The bundled `@mozaik-ai/cloud-sdk` uploads all events **including full agent memory** to app.jigjoy.ai when `MOZAIK_API_KEY`/`MOZAIK_PROJECT_KEY` is set or `~/.mozaik/credentials.json` exists. The runtime guard blocks this unless `MOZAIK_CLOUD_ENABLED=true` is set in env or `.env` (the explicit opt-in; see `assertTelemetryDisabled`).
+- The bundled `@mozaik-ai/cloud-sdk` uploads all events **including full agent memory** to app.jigjoy.ai when `MOZAIK_API_KEY`/`MOZAIK_PROJECT_KEY` is set or `~/.mozaik/credentials.json` exists. The runtime guard blocks this unless `MOZAIK_CLOUD_ENABLED=true` is set in env or `.env` (the explicit opt-in; see `assertTelemetryDisabled`). Tests always run with it off: `apps/server/src/test/disable-telemetry.ts` blanks the keys.
