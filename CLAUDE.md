@@ -98,4 +98,4 @@ Gotchas verified in the 4.1.0 source (details and how we handle them are in `doc
 - An agent's memory context accumulates across `runLoop` calls, so create a fresh agent per job stage.
 - A failing `runLoop` (API error) emits no event; it's an unhandled rejection. We detect failures through a wrapping `InferenceRunner`.
 - `initializeRuntime({ inferenceRunnerConfig: { runner } })` accepts a custom runner; tests use a fake one, not the real API.
-- The bundled `@mozaik-ai/cloud-sdk` uploads all events **including full agent memory** to app.jigjoy.ai when `MOZAIK_API_KEY`/`MOZAIK_PROJECT_KEY` is set or `~/.mozaik/credentials.json` exists. Never set these or pair the machine.
+- The bundled `@mozaik-ai/cloud-sdk` uploads all events **including full agent memory** to app.jigjoy.ai when `MOZAIK_API_KEY`/`MOZAIK_PROJECT_KEY` is set or `~/.mozaik/credentials.json` exists. Telemetry is allowed (the user's decision for the hackathon); the server logs a warning at startup when it is on, and tests force it off (`apps/server/src/test/disable-telemetry.ts`).
