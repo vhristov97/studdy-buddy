@@ -136,3 +136,51 @@ Dependencies: M0 → M1 → M2 → M3, then M4 ∥ M7 (M5 can start once the M4 
 ## Verification per task
 
 Opus checks every task with `npm run typecheck && npm run lint && npm test`, reads the diff against the brief, and for UI tasks runs the app and looks at it. Pipeline stages are tested with `FakeRunner`. At each agent milestone (M3, M4, M6, M7) Opus does one real-API run on a fixture class to judge output quality. Prompt quality is judged by Opus, not by tests.
+
+## Handoff notes
+
+State and context a fresh session needs. Keep this section current at every milestone boundary.
+
+### Where things stand (after M2, merged in PR #7)
+- **Done**: M0 (scaffold), M1 (agent infra), M2 (courses/classes/materials). Next: **M3 on branch `m3-lesson`** (already created from `main`).
+- **Agent layer** (`apps/server/src/agents/`):
+  - `initAgentRuntime()` is called in `src/index.ts`.
+  - Run agent steps with `runStage(spec, message)` or `openStageSession(spec)` from `stage.ts`. Pass `model: config.MODEL_PLANNER` or `config.MODEL_BUILDER` and a Zod `schema`. Optional fields must be `.nullable()`, not `.optional()`, for strict structured output; `z.record` is rejected.
+  - Stages stream by default with `maxOutputTokens` 32000. Raise it for long outputs such as a full lesson; Opus/Sonnet 5.5 allow 128k.
+  - `onEvent` receives `inference.stream` events, which can drive progress.
+  - Orchestrate with `Coordinator` (`coordinator.ts`): `on(event, handler)`, `emit`, `subscribe` (that last one is for SSE). Domain event names live in `DOMAIN_EVENTS`; replace the demo ones.
+  - Tests use `FakeRunner` (`agents/testing/fake-runner.ts`) through `initAgentRuntime({ runner, cwd, repoRoot })`, pointing `repoRoot` at a temp dir.
+- **Smoke test**: `npm run smoke:agent` (real API, a few cents) passed on `claude-opus-5-5` and `claude-sonnet-5-5`.
+- **Data model so far**: `course`, `class` (status `draft|generating|ready|failed`, only `draft` used yet), `material` (kind `material|note`, `extracted_text`, `extraction_status`). Materials are locked once a class leaves `draft`. Repositories are in `apps/server/src/repositories/`; routes are in `src/routes/` and use the `ApiErrorBody` helpers in `routes/errors.ts`.
+- **Extracted PDF text format** (what the lesson writer receives):
+  - each page starts with `--- strana N ---`;
+  - slide titles are `## …`;
+  - bullets are `- …`, nested two spaces per level, and real decks go up to 5 levels;
+  - the ASVSP PDFs are handouts with **2 slides per page**, so expect two `##` titles per page.
+  - Notes (`.md`) are verbatim, including `~~strikethrough~~`.
+- **Web**:
+  - `apps/web/src/lib/canGenerate.ts` decides Generate readiness. M3 enables the button on the class page, which currently shows "Generisanje stiže u sledećoj verziji."
+  - Data layer: TanStack Query hooks in `src/api/hooks.ts`.
+  - Serbian plurals: `src/lib/format.ts`.
+  - Markdown rendering: `components/MarkdownView.tsx`, with no raw HTML.
+
+### Local data and samples
+- `samples/materials/`: `00_ASVSP_Pravila_Ocenjivanja.pdf` (grading rules, not a lecture), `01_ASVSP_Uvod.pdf` (64 pages), `02_ASVSP_Kontejnerizacija_Orkestracija.pdf` (52 pages).
+- `samples/notes/`: `Predavanje - 01.md`, `Predavanje - 02.md`.
+- These files are private and git-ignored. Never copy them into the repo or tests.
+- The local dev DB (`data/app.sqlite`) has the course "ASVSP (test)" (persona "iskusni data inženjer", cadence 4) with class 01 "Uvod" holding the class-01 PDF and notes. Use it for the M3 real-API run and screenshots.
+- `npm run extract -- <file>` prints extracted text.
+
+### M3 guidance
+- **Lesson writer** (spec §5):
+  - Source tags: no tag = slides, **(P)** = the lecturer's remark from the notes, **(D)** = tutor addition.
+  - Visible `> ⚠️ Ispravka:` callouts where the notes are wrong.
+  - Strikethrough in notes has no fixed meaning; trust the slides' wording.
+  - Deferred topics are flagged.
+  - Ends with the tracking table `Tema | Ocena | Testirano | Napomene`, with all ratings `?` initially.
+  - Must work with **no notes**: then there are no (P) items and no note corrections.
+  - Persona is optional (inject only when set). Output is Serbian Latin with diacritics; established English terms are kept.
+- **Output**: `lessonMd` plus structured `topics[]` (name, misconceptions from notes, deferred). Generate the table in the DB-backed view from `topics`, so ratings stay live; don't parse it out of Markdown.
+- **Job lifecycle**: Generate sets the class to `generating` (which locks materials) and runs the lesson stage. On success the status goes to `ready` and `lesson.ready` is emitted. That event will start the M4 quiz branch and the M7 viz branch, which don't exist yet, so just emit it. On failure the status goes to `failed`, with a retry that runs the stage again.
+- **Live progress**: SSE fed by `Coordinator.subscribe`.
+- **Quality check**: at the end of M3, Opus runs one real generation on class 01 and judges lesson quality against spec §5 before the PR.
