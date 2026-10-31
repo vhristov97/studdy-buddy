@@ -6,6 +6,9 @@ import type {
   CourseSummary,
   CreateClassInput,
   CreateCourseInput,
+  ClassJobs,
+  GenerationJob,
+  LessonView,
   MaterialDetail,
   MaterialSummary,
   UpdateClassInput,
@@ -41,6 +44,24 @@ export function useMaterial(id: number) {
   return useQuery({
     queryKey: queryKeys.material(id),
     queryFn: () => apiGet<MaterialDetail>(`/api/materials/${id}`),
+  });
+}
+
+/** The combined notes of a class and their tracking-table topics. 404 means "not generated". */
+export function useLesson(classId: number, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.lesson(classId),
+    queryFn: () => apiGet<LessonView>(`/api/classes/${classId}/lesson`),
+    enabled,
+  });
+}
+
+/** Generation jobs of a class, newest first. */
+export function useClassJobs(classId: number, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.classJobs(classId),
+    queryFn: async () => (await apiGet<ClassJobs>(`/api/classes/${classId}/jobs`)).jobs,
+    enabled,
   });
 }
 
@@ -122,8 +143,11 @@ export function useDeleteClass(id: number, courseId: number) {
   });
 }
 
-/** The class and its parent course (the course page shows per-class counts). */
-function invalidateClassAndCourse(client: QueryClient, classId: number) {
+/**
+ * The class (the "classes/<id>" prefix also covers its jobs and lesson) and its parent course
+ * (the course page shows per-class counts).
+ */
+export function invalidateClassAndCourse(client: QueryClient, classId: number) {
   return Promise.all([
     client.invalidateQueries({ queryKey: queryKeys.class(classId) }),
     // The course id isn't known here; the "courses" prefix covers the list and every course.
@@ -148,5 +172,14 @@ export function useDeleteMaterial(classId: number) {
       client.removeQueries({ queryKey: queryKeys.material(materialId) });
       return invalidateClassAndCourse(client, classId);
     },
+  });
+}
+
+export function useGenerate(classId: number) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiPost<GenerationJob>(`/api/classes/${classId}/generate`),
+    // A failed POST (e.g. 409) may still mean the class changed under us.
+    onSettled: () => invalidateClassAndCourse(client, classId),
   });
 }

@@ -1,15 +1,23 @@
 import { useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import type { ClassDetail, MaterialSummary } from "@studdy/shared";
 import { ApiError } from "../api/client";
-import { useDeleteClass, useDeleteMaterial, useClass, useUpdateClass } from "../api/hooks";
+import {
+  useClass,
+  useDeleteClass,
+  useDeleteMaterial,
+  useGenerate,
+  useUpdateClass,
+} from "../api/hooks";
 import { StatusBadge } from "../components/Badge";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { Button } from "../components/Button";
 import { ClassForm } from "../components/ClassForm";
 import { ConfirmDialog, Dialog } from "../components/Dialog";
 import { EmptyState } from "../components/EmptyState";
+import { ErrorMessage } from "../components/ErrorMessage";
 import { MaterialItem } from "../components/MaterialItem";
+import { PipelinePanel } from "../components/PipelinePanel";
 import { QueryBoundary } from "../components/QueryBoundary";
 import { UploadZone } from "../components/UploadZone";
 import { canGenerate } from "../lib/canGenerate";
@@ -30,11 +38,16 @@ function errorText(error: unknown): string {
   return error instanceof ApiError ? error.message : "Brisanje nije uspelo.";
 }
 
+function generateErrorText(error: unknown): string {
+  return error instanceof ApiError ? error.message : "Generisanje nije uspelo.";
+}
+
 function ClassView({ detail }: { detail: ClassDetail }) {
   const navigate = useNavigate();
   const updateClass = useUpdateClass(detail.id);
   const deleteClass = useDeleteClass(detail.id, detail.courseId);
   const deleteMaterial = useDeleteMaterial(detail.id);
+  const generate = useGenerate(detail.id);
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [materialToDelete, setMaterialToDelete] = useState<MaterialSummary | null>(null);
@@ -108,13 +121,30 @@ function ClassView({ detail }: { detail: ClassDetail }) {
       </section>
 
       <section className={styles.generate} aria-label="Generisanje">
-        {/* M3 enables this with canGenerate(detail).ok. */}
-        <Button variant="primary" disabled>
-          Generiši
-        </Button>
-        <p className={styles.reason}>
-          {readiness.ok ? "Generisanje stiže u sledećoj verziji." : readiness.reason}
-        </p>
+        <PipelinePanel key={detail.id} classId={detail.id} classStatus={detail.status} />
+        {detail.status === "ready" ? (
+          <Link to={`/predavanja/${detail.id}/lekcija`} className={styles.lessonLink}>
+            Otvori objedinjene beleške
+          </Link>
+        ) : (
+          <>
+            {(detail.status === "draft" || detail.status === "failed") && (
+              <Button
+                variant="primary"
+                disabled={!readiness.ok || generate.isPending}
+                onClick={() => generate.mutate()}
+              >
+                {generate.isPending
+                  ? "Generiše se…"
+                  : detail.status === "failed"
+                    ? "Pokušaj ponovo"
+                    : "Generiši"}
+              </Button>
+            )}
+            {!readiness.ok && <p className={styles.reason}>{readiness.reason}</p>}
+          </>
+        )}
+        {generate.isError && <ErrorMessage>{generateErrorText(generate.error)}</ErrorMessage>}
       </section>
 
       <Dialog open={editing} onClose={() => setEditing(false)} title="Izmeni predavanje">

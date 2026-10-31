@@ -2,7 +2,15 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { ClassDetail } from "@studdy/shared";
-import { apiError, classDetail, material, mockApi, renderAt, type Handler } from "../test/utils";
+import {
+  apiError,
+  classDetail,
+  job,
+  material,
+  mockApi,
+  renderAt,
+  type Handler,
+} from "../test/utils";
 
 const note = material({
   id: 11,
@@ -185,11 +193,77 @@ describe("ClassPage", () => {
       expect(screen.getAllByText("Ukloni materijale čiji tekst nije izdvojen.")).toHaveLength(1);
     });
 
-    it("is still disabled when ready, with the placeholder reason", async () => {
-      mockApi(classRoute(() => classDetail({ materials: [material()] })));
+    it("is enabled for a draft with material and starts generation", async () => {
+      let status: ClassDetail["status"] = "draft";
+      const { requests } = mockApi({
+        ...classRoute(() => classDetail({ status, materials: [material()] })),
+        "POST /api/classes/5/generate": () => {
+          status = "generating";
+          return new Response(JSON.stringify(job()), { status: 202 });
+        },
+        "GET /api/classes/5/jobs": () => ({ jobs: status === "draft" ? [] : [job()] }),
+      });
+      const user = userEvent.setup();
       renderAt("/predavanja/5");
-      expect(await generate()).toBeDisabled();
-      expect(screen.getByText("Generisanje stiže u sledećoj verziji.")).toBeInTheDocument();
+      const button = await generate();
+      expect(button).toBeEnabled();
+      await user.click(button);
+      await waitFor(() =>
+        expect(
+          requests.some((r) => r.method === "POST" && r.path === "/api/classes/5/generate"),
+        ).toBe(true),
+      );
+      const region = await screen.findByRole("region", { name: "Tok generisanja" });
+      expect(within(region).getByText("U toku…")).toBeInTheDocument();
+      expect(await screen.findByText("Generisanje je u toku.")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Generiši" })).not.toBeInTheDocument();
+    });
+
+    it("shows the server's message when generation is refused", async () => {
+      mockApi({
+        ...classRoute(() => classDetail({ materials: [material()] })),
+        "POST /api/classes/5/generate": () =>
+          apiError(409, "conflict", "Class is already generating"),
+      });
+      const user = userEvent.setup();
+      renderAt("/predavanja/5");
+      await user.click(await generate());
+      expect(await screen.findByRole("alert")).toHaveTextContent("Class is already generating");
+    });
+
+    it("offers a retry after a failed generation, with the error", async () => {
+      const failed = job({
+        status: "failed",
+        error: "Model nije odgovorio",
+        finishedAt: "2026-01-01T10:00:30.000Z",
+      });
+      const { requests } = mockApi({
+        ...classRoute(() => classDetail({ status: "failed", materials: [material()] })),
+        "GET /api/classes/5/jobs": () => ({ jobs: [failed] }),
+        "POST /api/classes/5/generate": () =>
+          new Response(JSON.stringify(job({ id: 2 })), { status: 202 }),
+      });
+      const user = userEvent.setup();
+      renderAt("/predavanja/5");
+      expect(await screen.findByText("Model nije odgovorio")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Generiši" })).not.toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Pokušaj ponovo" }));
+      await waitFor(() => expect(requests.some((r) => r.method === "POST")).toBe(true));
+    });
+
+    it("links to the combined notes once ready", async () => {
+      mockApi({
+        ...classRoute(() => classDetail({ status: "ready", materials: [material()] })),
+        "GET /api/classes/5/jobs": () => ({
+          jobs: [job({ status: "succeeded", finishedAt: "2026-01-01T10:02:00.000Z" })],
+        }),
+      });
+      renderAt("/predavanja/5");
+      expect(
+        await screen.findByRole("link", { name: "Otvori objedinjene beleške" }),
+      ).toHaveAttribute("href", "/predavanja/5/lekcija");
+      expect(screen.queryByRole("button", { name: "Generiši" })).not.toBeInTheDocument();
+      expect(await screen.findByText("Završeno")).toBeInTheDocument();
     });
   });
 

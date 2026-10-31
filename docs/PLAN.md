@@ -105,7 +105,7 @@ Dependencies: M0 → M1 → M2 → M3, then M4 ∥ M7 (M5 can start once the M4 
 ### M3: Combined notes
 - [x] M3.1 lesson-writer prompt + output schema (`lessonMd`, `topics[]` with misconceptions found in notes, deferred flag). Works with no notes.
 - [x] M3.2 `generation_job` table + repository (moved from M1, since it references `class`), generate endpoint, job lifecycle, SSE stream, persistence of lesson, topics, and `notes` topic_events.
-- [ ] M3.3 Lesson view: rendered Markdown with styled (P)/(D) tags and `⚠️ Ispravka` callouts, a live tracking table from the DB, a pipeline status panel.
+- [x] M3.3 Lesson view: rendered Markdown with styled (P)/(D) tags and `⚠️ Ispravka` callouts, a live tracking table from the DB, a pipeline status panel.
 
 ### M4: Quiz branch
 - [ ] M4.1 Shared Zod schemas: QuizPlan, Quiz, Question (`mc`/`num`/`match`/`open`). The validator from §7.3, with tests.

@@ -6,11 +6,14 @@ export interface GenerateReadiness {
   reason: string | null;
 }
 
-/** Whether a class has what Generate needs. M3 enables the button with this. */
+/** Whether a class can be generated: a draft (first run) or a failed one (retry) with material. */
 export function canGenerate(
   classDetail: Pick<ClassDetail, "status" | "materials">,
 ): GenerateReadiness {
-  if (classDetail.status !== "draft") {
+  if (classDetail.status === "generating") {
+    return { ok: false, reason: "Generisanje je u toku." };
+  }
+  if (classDetail.status === "ready") {
     return { ok: false, reason: "Predavanje je već generisano." };
   }
   if (!classDetail.materials.some((item) => item.kind === "material")) {

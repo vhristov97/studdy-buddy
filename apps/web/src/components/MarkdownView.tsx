@@ -1,3 +1,4 @@
+import type { ComponentProps } from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import styles from "./MarkdownView.module.css";
@@ -13,10 +14,21 @@ const COMPONENTS: Components = {
 
 const PAGE_MARKER = /^--- strana (\d+) ---$/;
 
-export function MarkdownView({ source }: { source: string }) {
+interface MarkdownViewProps {
+  source: string;
+  /** Run after remark-gfm. */
+  remarkPlugins?: ComponentProps<typeof Markdown>["remarkPlugins"];
+  /** Merged over the defaults (links in a new tab). */
+  components?: Components;
+}
+
+export function MarkdownView({ source, remarkPlugins, components }: MarkdownViewProps) {
   return (
     <div className={styles.markdown}>
-      <Markdown remarkPlugins={[remarkGfm]} components={COMPONENTS}>
+      <Markdown
+        remarkPlugins={[remarkGfm, ...(remarkPlugins ?? [])]}
+        components={components ? { ...COMPONENTS, ...components } : COMPONENTS}
+      >
         {source}
       </Markdown>
     </div>

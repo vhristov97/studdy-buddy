@@ -63,3 +63,17 @@
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
 }
+
+.lessonLink {
+  display: inline-block;
+  padding: var(--space-2) var(--space-5);
+  border-radius: var(--radius-md);
+  background-color: var(--color-accent);
+  color: var(--color-accent-contrast);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.lessonLink:hover {
+  filter: brightness(1.08);
+}
