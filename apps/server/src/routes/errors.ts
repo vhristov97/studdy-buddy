@@ -1,7 +1,7 @@
 import type { FastifyError, FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { ApiErrorBody, ApiErrorCode } from "@studdy/shared";
-import { ConflictError } from "../repositories/courses.js";
+import { ConflictError } from "../repositories/conflict.js";
 
 /** Thrown by route handlers; the error handler turns it into an `ApiErrorBody` response. */
 export class ApiError extends Error {
@@ -18,7 +18,7 @@ export class ApiError extends Error {
 
 export const notFound = (what: string) => new ApiError(404, "not_found", `${what} not found`);
 
-function errorBody(code: ApiErrorCode, message: string, details?: unknown): ApiErrorBody {
+export function errorBody(code: ApiErrorCode, message: string, details?: unknown): ApiErrorBody {
   return { error: { code, message, ...(details === undefined ? {} : { details }) } };
 }
 

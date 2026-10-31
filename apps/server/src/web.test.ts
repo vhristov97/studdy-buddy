@@ -81,7 +81,7 @@ describe("web app serving", () => {
       const res = await build(dist).inject({ method: "GET", url: "/api/nope" });
       expect(res.statusCode).toBe(404);
       expect(res.headers["content-type"]).toContain("application/json");
-      expect(res.json()).toMatchObject({ statusCode: 404 });
+      expect(res.json()).toMatchObject({ error: { code: "not_found" } });
     });
 
     it("still serves the API", async () => {
@@ -97,6 +97,15 @@ describe("web app serving", () => {
   });
 
   describe("without a dist dir", () => {
+    it("returns an ApiErrorBody 404 for unknown /api routes", async () => {
+      const res = await build(path.join(dir, "missing")).inject({
+        method: "GET",
+        url: "/api/nope",
+      });
+      expect(res.statusCode).toBe(404);
+      expect(res.json()).toMatchObject({ error: { code: "not_found" } });
+    });
+
     it("returns 404 for /", async () => {
       const res = await build(path.join(dir, "missing")).inject({ method: "GET", url: "/" });
       expect(res.statusCode).toBe(404);

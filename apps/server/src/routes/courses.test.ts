@@ -234,7 +234,11 @@ describe("courses and classes API", () => {
       const cls = await createClass(course.id);
       const res = await request("GET", `/api/classes/${cls.id}`);
       expect(res.statusCode).toBe(200);
-      expect(ClassDetail.parse(res.json())).toEqual({ ...cls, courseName: "Databases" });
+      expect(ClassDetail.parse(res.json())).toEqual({
+        ...cls,
+        courseName: "Databases",
+        materials: [],
+      });
     });
 
     it("updates title and number", async () => {

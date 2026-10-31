@@ -17,10 +17,13 @@ import {
   updateClass,
   updateCourse,
 } from "../repositories/courses.js";
+import { deleteUnreferencedFiles } from "../files/store.js";
+import { listClassHashes, listCourseHashes } from "../repositories/materials.js";
 import { notFound, parseBody, parseId } from "./errors.js";
 
 export interface CourseRouteOptions {
   db: Db;
+  dataDir: string;
 }
 
 interface CourseParams {
@@ -31,7 +34,10 @@ interface ClassParams {
   classId: string;
 }
 
-export const courseRoutes: FastifyPluginAsync<CourseRouteOptions> = async (app, { db }) => {
+export const courseRoutes: FastifyPluginAsync<CourseRouteOptions> = async (
+  app,
+  { db, dataDir },
+) => {
   app.get("/api/courses", async () => listCourses(db));
 
   app.post("/api/courses", async (request, reply) => {
@@ -54,9 +60,13 @@ export const courseRoutes: FastifyPluginAsync<CourseRouteOptions> = async (app, 
   });
 
   app.delete<{ Params: CourseParams }>("/api/courses/:courseId", async (request, reply) => {
-    if (!deleteCourse(db, parseId("courseId", request.params.courseId))) {
-      throw notFound("Course");
-    }
+    const id = parseId("courseId", request.params.courseId);
+    // The cascade removes the material rows, so note which files they pointed at first.
+    const hashes = listCourseHashes(db, id);
+    if (!deleteCourse(db, id)) throw notFound("Course");
+    deleteUnreferencedFiles(db, dataDir, hashes, (err) =>
+      request.log.warn({ err }, "could not remove an unreferenced file"),
+    );
     return reply.code(204).send();
   });
 
@@ -83,7 +93,12 @@ export const courseRoutes: FastifyPluginAsync<CourseRouteOptions> = async (app, 
   });
 
   app.delete<{ Params: ClassParams }>("/api/classes/:classId", async (request, reply) => {
-    if (!deleteClass(db, parseId("classId", request.params.classId))) throw notFound("Class");
+    const id = parseId("classId", request.params.classId);
+    const hashes = listClassHashes(db, id);
+    if (!deleteClass(db, id)) throw notFound("Class");
+    deleteUnreferencedFiles(db, dataDir, hashes, (err) =>
+      request.log.warn({ err }, "could not remove an unreferenced file"),
+    );
     return reply.code(204).send();
   });
 };

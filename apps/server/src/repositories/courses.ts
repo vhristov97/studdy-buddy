@@ -11,22 +11,8 @@ import type {
 } from "@studdy/shared";
 import type { Db } from "../db/client.js";
 import { classTable, course } from "../db/schema.js";
-
-/** A unique constraint was violated, e.g. a class number that already exists in the course. */
-export class ConflictError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ConflictError";
-  }
-}
-
-/** Drizzle may wrap the driver error as `cause`, so check the whole chain. */
-function isUniqueViolation(err: unknown): boolean {
-  for (let current = err; current instanceof Error; current = current.cause) {
-    if ((current as { code?: unknown }).code === "SQLITE_CONSTRAINT_UNIQUE") return true;
-  }
-  return false;
-}
+import { ConflictError, isUniqueViolation } from "./conflict.js";
+import { listMaterials } from "./materials.js";
 
 function classNumberConflict(number: number): ConflictError {
   return new ConflictError(`Class number ${number} already exists in this course`);
@@ -172,7 +158,13 @@ export function getClass(db: Db, id: number): ClassDetail | undefined {
     .innerJoin(course, eq(course.id, classTable.courseId))
     .where(eq(classTable.id, id))
     .get();
-  return row && { ...toClassSummary(row), courseName: row.courseName };
+  return (
+    row && {
+      ...toClassSummary(row),
+      courseName: row.courseName,
+      materials: listMaterials(db, row.id),
+    }
+  );
 }
 
 export function updateClass(db: Db, id: number, input: UpdateClassInput): ClassSummary | undefined {

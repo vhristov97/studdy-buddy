@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MaterialSummary } from "./materials";
 
 export const CLASS_STATUSES = ["draft", "generating", "ready", "failed"] as const;
 export const ClassStatus = z.enum(CLASS_STATUSES);
@@ -84,7 +85,11 @@ export const CourseDetail = CourseSummary.extend({
 });
 export type CourseDetail = z.infer<typeof CourseDetail>;
 
-export const ClassDetail = ClassSummary.extend({ courseName: z.string() });
+export const ClassDetail = ClassSummary.extend({
+  courseName: z.string(),
+  /** Materials first, then notes; each group by original name. */
+  materials: z.array(MaterialSummary),
+});
 export type ClassDetail = z.infer<typeof ClassDetail>;
 
 export const ApiErrorCode = z.enum(["validation", "not_found", "conflict", "internal"]);
