@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router";
 import type { ClassStatus, GenerationJob, QuizSummary } from "@studdy/shared";
 import { ApiError } from "../api/client";
 import { useClassEvents } from "../api/events";
@@ -196,7 +197,9 @@ function JobRow({ job, label, chars, now, released }: RowProps) {
       <p className={styles.meta}>
         {step && <span>{step}</span>}
         {job.status === "succeeded" && released && (
-          <span>{`${released.code} · ${countQuestions(released.questionCount)}`}</span>
+          <Link to={`/kvizovi/${released.id}`}>
+            {`${released.code} · ${countQuestions(released.questionCount)}`}
+          </Link>
         )}
         {job.attempt > 1 && <span>pokušaj {job.attempt}</span>}
         <span>{duration}</span>

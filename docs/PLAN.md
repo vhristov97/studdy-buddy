@@ -113,7 +113,7 @@ Dependencies: M0 → M1 → M2 → M3, then M4 ∥ M7 (M5 can start once the M4 
 - [x] M4.3 Review loop (validator + reviewer, ≤3 cycles with the same builder), release to the quiz library, failure + regeneration flow. Plans never leave the server.
 
 ### M5: Quiz player
-- [ ] M5.1 Player per spec §8: picker (newest preselected), all four question types, "Ne znam" on every question, metadata, autosave (fault-tolerant localStorage), progress bar, two-step submit, instant feedback for closed questions, score line, reset, JSON fallback with copy button.
+- [x] M5.1 Player per spec §8: picker (newest preselected), all four question types, "Ne znam" on every question, metadata, autosave (fault-tolerant localStorage), progress bar, two-step submit, instant feedback for closed questions, score line, reset, JSON fallback with copy button.
 - [x] M5.2 Submission API + persistence in the §8 format, with auto-scoring in `packages/shared` (shared with the server).
 
 ### M6: Grading + progress

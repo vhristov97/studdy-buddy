@@ -186,7 +186,14 @@ describe("CoursePage", () => {
     expect(within(items[0]!).getByText("Teže")).toBeInTheDocument();
     expect(within(items[0]!).getByText("8 pitanja · 5. 3. 2026.")).toBeInTheDocument();
     expect(within(items[1]!).getByText("20 pitanja · 5. 3. 2026.")).toBeInTheDocument();
-    expect(within(items[0]!).queryByRole("link")).not.toBeInTheDocument();
+    expect(within(items[0]!).getByRole("link", { name: /P02/ })).toHaveAttribute(
+      "href",
+      "/kvizovi/2",
+    );
+    expect(within(items[1]!).getByRole("link", { name: /P01/ })).toHaveAttribute(
+      "href",
+      "/kvizovi/1",
+    );
   });
 
   it("shows an empty state when the course has no quizzes", async () => {

@@ -11,7 +11,11 @@ import type {
   LessonView,
   MaterialDetail,
   MaterialSummary,
+  PublicQuiz,
   QuizSummary,
+  SubmissionAnswers,
+  SubmissionDetail,
+  SubmissionSummary,
   UpdateClassInput,
   UpdateCourseInput,
 } from "@studdy/shared";
@@ -72,6 +76,30 @@ export function useCourseQuizzes(courseId: number, enabled = true) {
     queryKey: queryKeys.courseQuizzes(courseId),
     queryFn: () => apiGet<QuizSummary[]>(`/api/courses/${courseId}/quizzes`),
     enabled,
+  });
+}
+
+/** A quiz as the student sees it: no answers, explanations or key points. */
+export function useQuiz(id: number) {
+  return useQuery({
+    queryKey: queryKeys.quiz(id),
+    queryFn: () => apiGet<PublicQuiz>(`/api/quizzes/${id}`),
+  });
+}
+
+/** Past submissions of a quiz, newest first. */
+export function useQuizSubmissions(quizId: number) {
+  return useQuery({
+    queryKey: queryKeys.quizSubmissions(quizId),
+    queryFn: () => apiGet<SubmissionSummary[]>(`/api/quizzes/${quizId}/submissions`),
+  });
+}
+
+/** One submission with its feedback (correct answers, explanations, key points). */
+export function useSubmission(id: number) {
+  return useQuery({
+    queryKey: queryKeys.submission(id),
+    queryFn: () => apiGet<SubmissionDetail>(`/api/submissions/${id}`),
   });
 }
 
@@ -202,5 +230,14 @@ export function useRegenerateQuiz(classId: number) {
     // A failed POST (e.g. 409) may still mean the jobs changed under us. The "courses" prefix
     // covers the course's quiz library.
     onSettled: () => invalidateClassAndCourse(client, classId),
+  });
+}
+
+export function useSubmitQuiz(quizId: number) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (answers: SubmissionAnswers) =>
+      apiPost<SubmissionDetail>(`/api/quizzes/${quizId}/submissions`, { answers }),
+    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.quizSubmissions(quizId) }),
   });
 }
