@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
-import type { VizSuggestion } from "@studdy/shared";
+import type { VisualizationSummary, VizSuggestion } from "@studdy/shared";
 import type { Db } from "../db/client.js";
-import { classTable, vizSuggestion } from "../db/schema.js";
+import { classTable, visualization, vizSuggestion } from "../db/schema.js";
 import { ApiError } from "../routes/errors.js";
 import { ConflictError } from "./conflict.js";
 
@@ -96,4 +96,22 @@ export function selectVizSuggestions(db: Db, classId: number, ids: number[]): nu
     tx.update(vizSuggestion).set({ selected: true }).where(inArray(vizSuggestion.id, unique)).run();
     return unique;
   });
+}
+
+/** The class's released visualizations, oldest first. The HTML is never part of the list. */
+export function listVisualizations(db: Db, classId: number): VisualizationSummary[] {
+  return db
+    .select({
+      id: visualization.id,
+      classId: visualization.classId,
+      suggestionId: visualization.suggestionId,
+      slug: visualization.slug,
+      title: visualization.title,
+      createdAt: visualization.createdAt,
+    })
+    .from(visualization)
+    .where(eq(visualization.classId, classId))
+    .orderBy(asc(visualization.id))
+    .all()
+    .map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }));
 }

@@ -123,7 +123,7 @@ Dependencies: M0 → M1 → M2 → M3, then M4 ∥ M7 (M5 can start once the M4 
 
 ### M7: Visualization branch
 - [ ] M7.1 viz-identifier prompt (spoiler-free suggestions), suggestion persistence, selection UI (multi-select + custom topic).
-- [ ] M7.2 viz-planner, viz-builder and viz-reviewer prompts. Design contract checks (title, themes, phone width, no external deps, optional storage). Per-viz review loop, failure + regeneration.
+- [x] M7.2 viz-planner, viz-builder and viz-reviewer prompts. Design contract checks (title, themes, phone width, no external deps, optional storage). Per-viz review loop, failure + regeneration.
 - [ ] M7.3 Viz serving at `/viz/:id` with a strict CSP in a sandboxed iframe, links from the lesson and the registry.
 
 ### M8: Cumulative reviews

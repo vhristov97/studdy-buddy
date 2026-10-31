@@ -69,6 +69,10 @@ describe("stageLabel", () => {
     expect(stageLabel({ stage: "quiz-builder", cycle: null })).toBe("Izrada");
     expect(stageLabel({ stage: "quiz-builder", cycle: 3 })).toBe("Ispravke (krug 3)");
     expect(stageLabel({ stage: "quiz-reviewer", cycle: 2 })).toBe("Provera (krug 2)");
+    expect(stageLabel({ stage: "viz-planner", cycle: null })).toBe("Planiranje");
+    expect(stageLabel({ stage: "viz-builder", cycle: null })).toBe("Izrada");
+    expect(stageLabel({ stage: "viz-builder", cycle: 1 })).toBe("Ispravke (krug 1)");
+    expect(stageLabel({ stage: "viz-reviewer", cycle: 2 })).toBe("Provera (krug 2)");
     expect(stageLabel({ stage: "lesson-writer", cycle: null })).toBeNull();
   });
 });

@@ -1,19 +1,23 @@
 import type { GenerationJob, JobKind } from "@studdy/shared";
 
-/** Stage label per job kind. M7 adds the visualization ones. */
+/** Label per job kind. */
 export const JOB_KIND_LABELS: Record<JobKind, string> = {
   lesson: "Objedinjene beleške",
   quiz: "Kviz",
   grading: "Ocenjivanje",
   viz_topics: "Predlozi vizualizacija",
+  viz: "Vizualizacija",
 };
 
-/** Pipeline position of each kind; the panel lists its rows in this order. M7.2 adds the viz kind. */
-export const JOB_KIND_ORDER: readonly JobKind[] = ["lesson", "quiz", "grading", "viz_topics"];
+/** Pipeline position of each kind; the panel lists its rows in this order. */
+export const JOB_KIND_ORDER: readonly JobKind[] = ["lesson", "quiz", "grading", "viz_topics", "viz"];
 
-/** Step label per stage name, given the review cycle of the job. M7 adds the viz stages. */
+/** Step label per stage name, given the review cycle of the job. */
 const STAGE_LABELS: Record<string, (cycle: number | null) => string> = {
   "viz-identifier": () => "Traženje tema",
+  "viz-planner": () => "Planiranje",
+  "viz-builder": (cycle) => (cycle === null ? "Izrada" : `Ispravke (krug ${cycle})`),
+  "viz-reviewer": (cycle) => `Provera (krug ${cycle ?? 1})`,
   "quiz-planner": () => "Planiranje",
   "quiz-builder": (cycle) => (cycle === null ? "Izrada" : `Ispravke (krug ${cycle})`),
   "quiz-reviewer": (cycle) => `Provera (krug ${cycle ?? 1})`,

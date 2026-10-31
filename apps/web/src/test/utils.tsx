@@ -137,6 +137,7 @@ export const job = (over: Partial<GenerationJob> = {}): GenerationJob => ({
   error: null,
   cycle: null,
   submissionId: null,
+  suggestionId: null,
   createdAt: "2026-01-01T10:00:00.000Z",
   finishedAt: null,
   ...over,
