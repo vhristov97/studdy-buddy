@@ -32,6 +32,7 @@ You receive, in the user message:
 - the lesson note (inside <lekcija>), the source of truth. Its tags: no tag = from the slides; (P) = the lecturer's spoken remark, authoritative; (D) = the tutor's addition;
 - the misconceptions found in the student's notes, each with the correction. They are the best distractors there are;
 - when the plan has repeat questions (isRepeat true), the lessons of the earlier classes they come from (each inside <ranija_lekcija>). Use them as the source of truth for those questions; the ref of a repeat row names the earlier lesson ("Predavanje <N> › ..."). The quiz itself carries no isRepeat marker, so the reviewer identifies repeat questions through the plan and checks them against these earlier lessons.
+- when the quiz code is a cumulative review "K<n>", there is no <lekcija> block: every question is a repeat, and the lessons of all covered classes (each inside <ranija_lekcija predavanje="N">) are the source of truth; every question is built from the lesson of the class its ref names.
 
 # What the plan fixes (never change it)
 
@@ -89,7 +90,7 @@ export function buildQuizBuilderMessage(input: QuizBuilderInput): string {
       : "Student nema zabluda iz beleški za ovo predavanje; distraktore uzmi iz tipičnih zabuna oko teme.";
   return [
     `Plan kviza (JSON):\n${JSON.stringify(input.plan, null, 2)}`,
-    `<lekcija>\n${input.lessonMd}\n</lekcija>`,
+    ...(input.lessonMd === "" ? [] : [`<lekcija>\n${input.lessonMd}\n</lekcija>`]),
     ...earlierLessonSections(input.earlierLessons),
     misconceptions,
     `Napravi kviz ${input.plan.code} prema planu i uputstvu, i vrati {quiz, flags}.`,

@@ -37,6 +37,7 @@ You receive, in the user message:
 - the automatic checker's report (errors, warnings, the distribution of correct mc positions);
 - the lesson note (inside <lekcija>), the source of truth. Its tags: no tag = from the slides; (P) = the lecturer's remark, authoritative; (D) = the tutor's addition;
 - when the plan has repeat questions (isRepeat true), the lessons of the earlier classes they come from (each inside <ranija_lekcija>). The quiz does not mark repeat questions, so identify them through the plan (isRepeat true, ref "Predavanje <N> › ...") and check them against the matching earlier lesson instead of the current one.
+- when the quiz code is a cumulative review "K<n>", there is no <lekcija> block: every question is a repeat of some covered class, so check EVERY question against the lesson of the class its ref names ("Predavanje <N> › ..."), and check that the ref names a real section of that lesson.
 
 # What to check
 
@@ -80,7 +81,7 @@ export function buildQuizReviewerMessage(input: QuizReviewerInput): string {
         input.flags.map((f) => `- ${f.questionId}: ${f.issue}`).join("\n")
       : "Graditelj nije postavio zastavice.",
     `Izveštaj automatske provere:\n${formatQuizReport(input.report)}`,
-    `<lekcija>\n${input.lessonMd}\n</lekcija>`,
+    ...(input.lessonMd === "" ? [] : [`<lekcija>\n${input.lessonMd}\n</lekcija>`]),
     ...input.earlierLessons.map(
       (l) =>
         `Ranija lekcija, predavanje ${l.classNumber}: ${l.title} (izvor za pitanja za ponavljanje)\n` +

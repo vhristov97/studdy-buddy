@@ -15,7 +15,13 @@ import { ResilientRunner } from "./resilient-runner.js";
 import { initAgentRuntime, publishStageFailed } from "./runtime.js";
 import { toStructuredOutputSchema } from "./structured-output.js";
 import { FakeRunner, fakeJsonAnswer, type FakeResponse } from "./testing/fake-runner.js";
-import { MISCONCEPTION, ctxFixture, planFixture } from "./testing/quiz-fixtures.js";
+import {
+  MISCONCEPTION,
+  ctxFixture,
+  cumulativeCtxFixture,
+  cumulativePlanFixture,
+  planFixture,
+} from "./testing/quiz-fixtures.js";
 
 function issuesOf(plan: unknown, ctx = ctxFixture()): string {
   const result = quizPlanSchema(ctx).safeParse(plan);
@@ -478,6 +484,143 @@ describe("quizPlanSchema", () => {
 
   it("converts to a structured output schema", () => {
     expect(() => toStructuredOutputSchema(quizPlanSchema(ctxFixture()))).not.toThrow();
+  });
+});
+
+describe("cumulative review (K) planning", () => {
+  const kIssues = (plan: unknown, ctx = cumulativeCtxFixture()) => issuesOf(plan, ctx);
+  const kMutated = (fn: (plan: QuizPlan) => void): QuizPlan => {
+    const plan = cumulativePlanFixture();
+    fn(plan);
+    return plan;
+  };
+  const dueItem = (topic: string, classNumber: number, extra = {}) => ({
+    topic,
+    classNumber,
+    dueQuiz: "K1",
+    reason: "weak" as const,
+    ...extra,
+  });
+
+  it("accepts the valid fixture", () => {
+    expect(kIssues(cumulativePlanFixture())).toBe("");
+  });
+
+  it("uses the cumulative instruction and the persona", () => {
+    const instruction = buildQuizPlannerInstruction("iskusni inženjer", "cumulative");
+    expect(instruction).toContain("cumulative review quiz");
+    expect(instruction).toContain("EVERY backlog item that is due");
+    expect(instruction).toContain("iskusni inženjer");
+    expect(buildQuizPlannerInstruction(null, "cumulative")).not.toContain("also");
+    expect(quizPlannerSpec(cumulativeCtxFixture()).instruction).toContain("cumulative review");
+    expect(quizPlannerSpec(ctxFixture()).instruction).not.toContain("cumulative review quiz");
+  });
+
+  it("rejects a row that is not a repeat", () => {
+    expect(kIssues(kMutated((p) => void (p.questions[1]!.isRepeat = false)))).toContain(
+      "every question of a cumulative review is a repeat",
+    );
+  });
+
+  it("rejects a missing or wrong classNumber", () => {
+    expect(kIssues(kMutated((p) => void (p.questions[1]!.classNumber = null)))).toContain(
+      "classNumber must be set",
+    );
+    expect(kIssues(kMutated((p) => void (p.questions[1]!.classNumber = 1)))).toContain(
+      'topic "Stream obrada" is not a topic of predavanje 1',
+    );
+  });
+
+  it("rejects a ref that does not match the classNumber", () => {
+    expect(
+      kIssues(kMutated((p) => void (p.questions[0]!.ref = "Predavanje 1 › Odeljak"))),
+    ).toContain('ref must start with "Predavanje 2 ›"');
+    expect(kIssues(kMutated((p) => void (p.questions[0]!.ref = "Obrada › Primer")))).toContain(
+      'ref must start with "Predavanje 2 ›"',
+    );
+  });
+
+  it("rejects an unknown topic and a deferred one", () => {
+    expect(kIssues(kMutated((p) => void (p.questions[1]!.topic = "Nepoznata")))).toContain(
+      "not a known topic of the covered classes",
+    );
+    const ctx = cumulativeCtxFixture({
+      backlog: [dueItem("Lambda arhitektura", 2, { deferred: true })],
+    });
+    expect(
+      kIssues(
+        kMutated((p) => void (p.questions[1]!.topic = "Lambda arhitektura")),
+        ctx,
+      ),
+    ).toContain("is deferred");
+  });
+
+  it("requires a question for every due, not deferred backlog item", () => {
+    const ctx = cumulativeCtxFixture({
+      backlog: [
+        dueItem("Skladišta podataka", 1),
+        dueItem("Batch obrada", 2, { dueQuiz: "K2" }), // due later: not required
+        dueItem("Lambda arhitektura", 2, { deferred: true }), // deferred: not required
+      ],
+    });
+    expect(kIssues(cumulativePlanFixture(), ctx)).toBe("");
+    // Covering it on the other class's topic of the same name does not count.
+    const missing = kMutated((p) => {
+      p.questions[5]!.topic = "Batch obrada";
+      p.questions[5]!.classNumber = 2;
+      p.questions[5]!.ref = "Predavanje 2 › Odeljak";
+    });
+    expect(kIssues(missing, ctx)).toContain(
+      'Backlog items due in K1 have no question: "Skladišta podataka" (predavanje 1)',
+    );
+  });
+
+  it("does not demand note misconceptions or lesson-quiz ordering", () => {
+    // closed questions of different classes in any order; open questions still last
+    const reordered = kMutated((p) => {
+      p.questions[0]!.classNumber = 1;
+      p.questions[0]!.topic = "Skladišta podataka";
+      p.questions[0]!.ref = "Predavanje 1 › Odeljak";
+    });
+    expect(kIssues(reordered)).toBe("");
+    expect(
+      kIssues(
+        kMutated((p) => {
+          const [first, second] = [p.questions[0]!, p.questions[6]!];
+          p.questions[0] = { ...second, id: "q1" };
+          p.questions[6] = { ...first, id: "q7" };
+        }),
+      ),
+    ).toContain("closed question after an open question");
+  });
+
+  it("still checks the code, the typeMix and the mc positions", () => {
+    expect(kIssues(kMutated((p) => void (p.code = "K9")))).toContain('quiz code must be "K1"');
+    expect(kIssues(kMutated((p) => void (p.typeMix.mc = 9)))).toContain("typeMix.mc is 9");
+  });
+
+  it("builds a message from the lessons, topics, due backlog and observations", () => {
+    const ctx = cumulativeCtxFixture({
+      backlog: [
+        dueItem("Skladišta podataka", 1),
+        dueItem("Batch obrada", 2, { dueQuiz: "K2" }),
+        dueItem("Lambda arhitektura", 2, { deferred: true }),
+      ],
+      observations: ["Računanje je slabije."],
+    });
+    const message = buildQuizPlannerMessage(ctx);
+    expect(message).toContain("Kumulativni pregled K1");
+    expect(message).toContain("Obuhvaćena predavanja: 1 (Skladišta), 2 (Obrada podataka)");
+    expect(message).not.toContain("<lekcija>");
+    expect(message).toContain('<ranija_lekcija predavanje="1">');
+    expect(message).toContain('<ranija_lekcija predavanje="2">');
+    expect(message).toContain("Stream obrada (predavanje 2) [ocena: ~]");
+    expect(message).toContain("Skladišta podataka (predavanje 01) — OBAVEZNO u K1");
+    expect(message).toContain("Batch obrada (predavanje 02) — dospeva u K2 (nije obavezno ovde)");
+    expect(message).toContain("Lambda arhitektura (predavanje 02) (odloženo");
+    expect(message).toContain("Obavezne stavke za K1: 1");
+    expect(message).toContain("Računanje je slabije.");
+    expect(message).toContain("Napravi plan kumulativnog pregleda K1");
   });
 });
 

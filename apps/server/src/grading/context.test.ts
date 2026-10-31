@@ -367,7 +367,8 @@ describe("loadGradingContext", () => {
       ["Skladišta podataka", 1],
     ]);
     expect(ctx.lessons.map((l) => l.classNumber)).toEqual([1, 2]);
-    expect(ctx.nextCumulativeCode).toBe("K1");
+    // The review after K1.
+    expect(ctx.nextCumulativeCode).toBe("K2");
   });
 
   it("throws for a missing submission", () => {

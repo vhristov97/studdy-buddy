@@ -13,6 +13,7 @@ import {
 } from "../db/schema.js";
 import { getLessonView } from "../repositories/lessons.js";
 import { getFullQuiz } from "../repositories/quizzes.js";
+import { parseCumulativeCode } from "../quiz/cumulative.js";
 import { toTopicInput, type BacklogItem, type QuizTopicInput } from "../quiz/context.js";
 
 export type GradingTopic = QuizTopicInput & { classNumber: number };
@@ -51,7 +52,10 @@ export interface GradingContext {
   questionTopics: { questionId: string; topic: string; classNumber: number }[];
   /** Topics the plan left out of the quiz (resolved to topic rows); they go to the backlog as left_out. */
   leftOutTopics: (GradingTopic & { reason: string })[];
-  /** The cumulative quiz that follows this class, "K<n>"; "K1" when the course has no cadence. */
+  /**
+   * The cumulative quiz that follows this class, "K<n>" ("K1" when the course has no cadence); for
+   * a cumulative quiz "K<n>" itself, the next one, "K<n+1>".
+   */
   nextCumulativeCode: string;
   /** Cross-course observations about the student, oldest first (the newest {@link MAX_OBSERVATIONS}). */
   observations: string[];
@@ -157,7 +161,9 @@ export function loadGradingContext(db: Db, submissionId: number): GradingContext
 
   const currentClass =
     quizRow.classId === null ? undefined : classes.find((c) => c.id === quizRow.classId);
-  // A cumulative quiz belongs to no class; it counts as following the latest class.
+  // A cumulative quiz "K<n>" belongs to no class: it counts as following the latest class, and the
+  // review that follows it is K<n+1>.
+  const reviewNumber = quizRow.classId === null ? parseCumulativeCode(quizRow.code) : null;
   const classNumber = currentClass?.number ?? Math.max(1, ...classes.map((c) => c.number));
   const earlier = classes
     .filter((c) => (currentClass ? c.number < currentClass.number : true))
@@ -214,7 +220,8 @@ export function loadGradingContext(db: Db, submissionId: number): GradingContext
   }
 
   const leftOutTopics: GradingContext["leftOutTopics"] = [];
-  for (const left of plan?.leftOut ?? []) {
+  // A cumulative review's left-out topics are not carried to the backlog (they were not new gaps).
+  for (const left of reviewNumber === null ? (plan?.leftOut ?? []) : []) {
     const resolved = resolveTopic(left.topic, false);
     if (!resolved) continue;
     if (leftOutTopics.some((t) => t.name === left.topic)) continue;
@@ -253,7 +260,10 @@ export function loadGradingContext(db: Db, submissionId: number): GradingContext
     topics,
     questionTopics,
     leftOutTopics,
-    nextCumulativeCode: nextCumulativeCode(classNumber, courseRow.reviewCadence),
+    nextCumulativeCode:
+      reviewNumber === null
+        ? nextCumulativeCode(classNumber, courseRow.reviewCadence)
+        : `K${reviewNumber + 1}`,
     observations: loadObservations(db),
     backlog: loadBacklog(db, courseRow.id),
     nextSteps: loadNextSteps(db, courseRow.id),

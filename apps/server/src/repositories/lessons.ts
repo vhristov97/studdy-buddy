@@ -17,6 +17,7 @@ export function toGenerationJob(row: JobRow): GenerationJob {
     cycle: row.cycle,
     submissionId: row.submissionId,
     suggestionId: row.suggestionId,
+    quizCode: row.quizCode,
     createdAt: row.createdAt.toISOString(),
     finishedAt: row.finishedAt?.toISOString() ?? null,
   };

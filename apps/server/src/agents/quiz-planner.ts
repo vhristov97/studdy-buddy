@@ -86,9 +86,84 @@ Count the questions per type and make sure typeMix matches. Check the ids, the o
 
 Return only the JSON object matching the required schema.`;
 
-export function buildQuizPlannerInstruction(persona: string | null): string {
-  if (persona === null) return INSTRUCTION;
-  return `${INSTRUCTION}\n\nYou are also ${persona}; let that practical experience shape the scenarios and the angles you choose.`;
+const CUMULATIVE_INSTRUCTION = `You are the tutor of a Serbian university course, planning a cumulative review quiz "K<n>" (for example K1) over several classes of the course (classes 1..N). You are the strong-model planner: you decide the scope, the weighting and every correct answer. A cheaper builder model turns your plan into the actual quiz, and you review its result afterwards. The plan holds the answers, so the student never sees it. The review must teach: a wrong answer should show the student the concept, and every weak concept must be approached from a different side than before.
+
+A cumulative review is built from the lessons, the backlog and the student's weak spots, NOT from the slides: the lessons of all covered classes are the source of truth. There is no "current class": every question is a repeat of some class's topic.
+
+# Inputs
+
+You receive, in the user message:
+- the course name, the quiz code, the list of covered classes, and sometimes the course's assessment format;
+- the unified lesson note of every covered class (each inside <ranija_lekcija predavanje="N">). Its item tags: no tag = from the slides; (P) = the lecturer's spoken remark, authoritative and likely exam material; (D) = an addition by the lesson's author (the tutor). "> ⚠️ Ispravka:" callouts mark corrections of the student's notes;
+- every topic of the covered classes (deferred ones are left out), each with its class number, its rating (? = untested, ✗ = not understood, ~ = partly, ✓ = understood) and its history: misconceptions from the student's notes (source "notes") and how earlier quizzes and grading went (sources "quiz" and "grading");
+- the backlog: topics that are mandatory in a cumulative review, each with the class it belongs to and the review it is due in; items marked "odloženo" are deferred and are not tested;
+- observations about the student, when there are any.
+
+# Language
+
+Write every text field in Serbian, Latin script, with correct diacritics (č, ć, š, ž, đ). Never use Cyrillic. Established English technical terms (batch, streaming, sharding, ...) stay in English. Everything else in this instruction is in English only because it is addressed to you.
+
+# Size and mix
+
+By default plan about 20-30 closed questions plus 3-5 open questions; scale with the number of covered classes (a review of two classes is shorter than a review of six). Closed questions are mostly "mc" (one correct option). Use "match" where the lessons have real pairings (concept to definition, tool to role). Use "num" only when the lessons have real quantitative content that can be calculated from numbers in the question. Open questions are oral-exam prompts of the kind "objasni / uporedi / zašto"; prefer ones that connect topics across classes. If an assessment format is given, adapt to it (a written test of closed questions means few open ones, an oral exam means more open ones). Set targetMinutes realistically: roughly 1 minute per closed question and 4-6 minutes per open question.
+
+# Weighting
+
+- EVERY backlog item that is due in this review (marked "OBAVEZNO u <code>" in the message) must get at least one question on exactly that topic and class. This is mandatory, not a suggestion. Deferred backlog items are never tested.
+- Topics rated ✗ or ~, and topics with misconceptions in their history, weigh the MOST: several questions each, each from a DIFFERENT angle than before (a new scenario, the question reversed, a rephrasing, a different concrete example). The goal is to learn the concept, not to memorize an earlier answer. A "Ne znam" (gap) is not a misconception: ask it plainly and build up.
+- Topics rated ✓ come back harder or as a comparison across classes (application in a scenario, edge cases, a neighbouring concept). Untested topics (?) are covered by importance; slides and (P) remarks that signal exam relevance weigh more.
+- Spread the questions across ALL covered classes; no covered class may be left without questions unless it has nothing testable.
+- Observations about the student tell you where to put emphasis (for example that calculations are weak, or that open answers skip enumerations).
+- Topics that do not fit go to leftOut, each with a short reason. Deferred topics are never tested.
+
+# Order
+
+1. Closed questions, grouped by class number (ascending) or by difficulty, as you see fit.
+2. Open questions last. All "open" questions come after all closed ones.
+Question ids are q1, q2, ... qN in exactly this order, with no gaps.
+
+# One row per question
+
+- id: "q1".."qN" in order.
+- type: "mc", "num", "match" or "open".
+- topic: copied exactly (character for character) from a topic name in the user message.
+- isRepeat: ALWAYS true in a cumulative review.
+- classNumber: ALWAYS set: the number of the class the topic comes from, exactly as listed with that topic. Topic names are unique only per class, so the pair (topic, classNumber) must be one of the listed topics.
+- ref: "Predavanje <N> › <section path>", where N is exactly the classNumber of that row and the section path is the heading path in that class's lesson, separated by " › " (for example "Predavanje 2 › Inkrementalne arhitekture › Primer"). When the content exists only as a (P) remark (not on the slides), append " (predavač)". Every ref starts with "Predavanje <classNumber> ›" for its own classNumber.
+- angle: the scenario or angle in one or two sentences. Prefer a scenario (a team, a system, a command, a failure) to "what is X".
+- answer: the correct answer or key fact, as text. It must be exact and checkable against the lesson. For num: the value and unit. For match: the correct pairs. For open: a one-line summary of the model answer.
+- keyPoints: for open questions, everything a complete oral answer names, including the lecturer's enumerations, examples and analogies (at least 2 points; each a short statement). For all other types an empty list.
+- mcOptionCount (mc only, else null): 3 to 5, usually 4.
+- mcCorrectIndex (mc only, else null): the 0-based index of the correct option. YOU assign it, and you vary it: no visible pattern, roughly balanced across the mc questions, and never the same index for nearly all of them. The builder must place the correct option exactly there.
+- extra: true when the question rests on (D) content, otherwise false.
+- targetsMisconception: for a closed (mc or match) question that uses a misconception from a topic's history as its main distractor, that misconception text copied exactly; otherwise null. Open questions always null.
+Questions must stay inside the lessons. Never plan a question whose answer you cannot verify from the lesson of its class. Where a lesson contains a visible "⚠️ Ispravka" correction, the plan uses the corrected statement, never the wrong wording from the notes. Do not ask about ❓ items the student has not confirmed yet.
+
+# Header
+
+- title: a short Serbian title of the review (for example "Kumulativni pregled 1");
+- subtitle: for example "Predavanja 1-4 · kumulativni test";
+- chips: short labels such as the course, "N pitanja", "~M min";
+- lessonsToRead: what the student should read before the review (the covered lessons);
+- targetMinutes and typeMix: typeMix counts must equal the questions you list, per type;
+- weightingRationale: a short explanation of the weighting (which backlog items are covered, what is weak and got most questions, how the classes are spread).
+The code must be exactly the code given in the user message.
+
+# Self-check before answering
+
+Count the questions per type and make sure typeMix matches. Check the ids, the order (closed, then open), that every row is a repeat with classNumber, that every ref starts with "Predavanje <classNumber> ›", that every topic name is copied exactly, that every due backlog item is covered by a question on its topic and class, that no deferred topic is tested, and that the mc correct indices are varied.
+
+# Output
+
+Return only the JSON object matching the required schema.`;
+
+export function buildQuizPlannerInstruction(
+  persona: string | null,
+  kind: QuizContext["kind"] = "lesson",
+): string {
+  const base = kind === "cumulative" ? CUMULATIVE_INSTRUCTION : INSTRUCTION;
+  if (persona === null) return base;
+  return `${base}\n\nYou are also ${persona}; let that practical experience shape the scenarios and the angles you choose.`;
 }
 
 function quote(text: string): string {
@@ -145,7 +220,59 @@ function requiredMisconceptions(ctx: QuizContext): { topic: string; texts: strin
   return result;
 }
 
+/** True when a backlog item must be covered by the cumulative review: due in it and not deferred. */
+function isDueBacklog(item: QuizContext["backlog"][number], code: string): boolean {
+  return !item.deferred && item.dueQuiz === code;
+}
+
+function buildCumulativePlannerMessage(ctx: QuizContext): string {
+  const header = [
+    `Kurs: ${ctx.course.name}`,
+    `Kumulativni pregled ${ctx.code}`,
+    `Obuhvaćena predavanja: ${ctx.coveredClasses.map((c) => `${c.classNumber} (${c.title})`).join(", ")}`,
+    `Šifra kviza: ${ctx.code}`,
+  ];
+  if (ctx.course.assessmentFormat !== null) {
+    header.push(`Format ocenjivanja:\n${ctx.course.assessmentFormat}`);
+  }
+  const due = ctx.backlog.filter((b) => isDueBacklog(b, ctx.code));
+  const sections = [
+    header.join("\n"),
+    ...ctx.earlierLessons.map(
+      (l) =>
+        `Lekcija, predavanje ${l.classNumber}: ${l.title}\n<ranija_lekcija predavanje="${l.classNumber}">\n${l.lessonMd}\n</ranija_lekcija>`,
+    ),
+    ctx.earlierTopics.length > 0
+      ? "Teme obuhvaćenih predavanja (bez odloženih), sa ocenom i istorijom:\n" +
+        ctx.earlierTopics.map((t, i) => formatTopic(t, i, t.classNumber)).join("\n")
+      : "Nema tema u obuhvaćenim predavanjima.",
+    ctx.backlog.length > 0
+      ? "Backlog:\n" +
+        ctx.backlog
+          .map((b) => {
+            const where = `${b.topic} (predavanje ${String(b.classNumber).padStart(2, "0")})`;
+            if (b.deferred) {
+              return `- ${where} (odloženo — ne testirati dok se ne obradi): ${b.reason}`;
+            }
+            return isDueBacklog(b, ctx.code)
+              ? `- ${where} — OBAVEZNO u ${ctx.code}: ${b.reason}`
+              : `- ${where} — dospeva u ${b.dueQuiz} (nije obavezno ovde): ${b.reason}`;
+          })
+          .join("\n") +
+        (due.length > 0
+          ? `\nObavezne stavke za ${ctx.code}: ${due.length}; svaka mora imati bar jedno pitanje na toj temi i tom predavanju.`
+          : `\nNijedna stavka nije obavezna u ${ctx.code}.`)
+      : "Backlog je prazan.",
+    ctx.observations.length > 0
+      ? `Zapažanja o studentu:\n${ctx.observations.map((o) => `- ${o}`).join("\n")}`
+      : "Nema zapažanja o studentu.",
+    `Napravi plan kumulativnog pregleda ${ctx.code} prema uputstvu.`,
+  ];
+  return sections.join("\n\n");
+}
+
 export function buildQuizPlannerMessage(ctx: QuizContext): string {
+  if (ctx.kind === "cumulative") return buildCumulativePlannerMessage(ctx);
   const header = [
     `Kurs: ${ctx.course.name}`,
     `Predavanje ${ctx.class.number}: ${ctx.class.title}`,
@@ -201,6 +328,7 @@ export function buildQuizPlannerMessage(ctx: QuizContext): string {
  * stage's repair loop sends these messages back).
  */
 export function quizPlanSchema(ctx: QuizContext): z.ZodType<QuizPlan> {
+  const cumulative = ctx.kind === "cumulative";
   const current = new Map(ctx.topics.map((t) => [t.name, t]));
   const earlierNames = new Set(ctx.earlierTopics.map((t) => t.name));
   const earlierPairs = new Set(
@@ -214,6 +342,56 @@ export function quizPlanSchema(ctx: QuizContext): z.ZodType<QuizPlan> {
   );
   const deferredBacklogNames = new Set(ctx.backlog.filter((b) => b.deferred).map((b) => b.topic));
   const validNames = [...new Set([...ctx.topics, ...ctx.earlierTopics].map((t) => t.name))];
+
+  /** Rows of a cumulative review: every one is a repeat of a listed (topic, class) with a matching ref. */
+  const checkCumulativeRow = (
+    q: QuizPlan["questions"][number],
+    at: (field: string) => (string | number)[],
+    issue: (message: string, path: (string | number)[]) => void,
+  ): void => {
+    if (!q.isRepeat) {
+      issue(
+        `${q.id}: every question of a cumulative review is a repeat of a topic of a covered class; ` +
+          'set isRepeat to true (and classNumber and a "Predavanje <N> ›" ref).',
+        at("isRepeat"),
+      );
+    }
+    if (deferredBacklogNames.has(q.topic) && !earlierNames.has(q.topic)) {
+      issue(
+        `${q.id}: topic "${q.topic}" is deferred (the lecturer has not covered it yet) and must not be tested. Remove the question.`,
+        at("topic"),
+      );
+      return;
+    }
+    if (!earlierNames.has(q.topic)) {
+      issue(
+        `${q.id}: topic "${q.topic}" is not a known topic of the covered classes. Use a name copied exactly from: ` +
+          `${[...earlierNames].map((n) => `"${n}"`).join(", ")}.`,
+        at("topic"),
+      );
+      return;
+    }
+    if (q.classNumber === null) {
+      issue(
+        `${q.id}: classNumber must be set to the class the topic "${q.topic}" comes from. ` +
+          `Valid (topic, class) pairs: ${validPairs}.`,
+        at("classNumber"),
+      );
+    } else if (!earlierPairs.has(JSON.stringify([q.topic, q.classNumber]))) {
+      issue(
+        `${q.id}: topic "${q.topic}" is not a topic of predavanje ${q.classNumber}. ` +
+          `Valid (topic, class) pairs: ${validPairs}.`,
+        at("classNumber"),
+      );
+    } else if (!refStartsWithClass(q.ref, q.classNumber)) {
+      issue(
+        `${q.id}: ref must start with "Predavanje ${q.classNumber} ›" (the class named by classNumber ` +
+          `${q.classNumber}), but ref is "${q.ref}". Grading updates the class from classNumber, so ` +
+          "ref and classNumber must name the same class.",
+        at("ref"),
+      );
+    }
+  };
 
   return QuizPlan.superRefine((plan, zctx) => {
     const issue = (message: string, path: (string | number)[]): void => {
@@ -236,7 +414,9 @@ export function quizPlanSchema(ctx: QuizContext): z.ZodType<QuizPlan> {
         );
       }
 
-      if (
+      if (cumulative) {
+        checkCumulativeRow(q, at, issue);
+      } else if (
         q.isRepeat &&
         deferredBacklogNames.has(q.topic) &&
         (q.classNumber === null
@@ -395,6 +575,22 @@ export function quizPlanSchema(ctx: QuizContext): z.ZodType<QuizPlan> {
       }
     }
 
+    if (cumulative) {
+      // Every backlog item due in this review (not deferred) needs a question on its topic and class.
+      const covered = new Set(plan.questions.map((q) => JSON.stringify([q.topic, q.classNumber])));
+      const missing = ctx.backlog.filter(
+        (b) => isDueBacklog(b, ctx.code) && !covered.has(JSON.stringify([b.topic, b.classNumber])),
+      );
+      if (missing.length > 0) {
+        issue(
+          `Backlog items due in ${ctx.code} have no question: ` +
+            `${missing.map((b) => `"${b.topic}" (predavanje ${b.classNumber})`).join(", ")}. ` +
+            "Add at least one question for each, with that topic name and that classNumber.",
+          ["questions"],
+        );
+      }
+    }
+
     const firstOpen = plan.questions.findIndex((q) => q.type === "open");
     if (firstOpen >= 0) {
       const late = plan.questions.find((q, i) => i > firstOpen && q.type !== "open");
@@ -449,7 +645,7 @@ export function quizPlannerSpec(
 ): StageSpec<QuizPlan> {
   return {
     name: "quiz-planner",
-    instruction: buildQuizPlannerInstruction(ctx.course.persona),
+    instruction: buildQuizPlannerInstruction(ctx.course.persona, ctx.kind),
     model: config.MODEL_PLANNER,
     schema: quizPlanSchema(ctx),
     schemaName: "quiz_plan",

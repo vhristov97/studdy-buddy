@@ -176,6 +176,18 @@ describe("buildQuizBuilderMessage", () => {
     }
   });
 
+  it("has no <lekcija> block for a cumulative review (empty lesson), only the covered lessons", () => {
+    const message = buildQuizBuilderMessage({
+      plan: planFixture(),
+      lessonMd: "",
+      notesMisconceptions: [],
+      earlierLessons: [{ classNumber: 1, title: "Skladišta", lessonMd: "RANIJA-LEKCIJA-TEKST" }],
+    });
+    expect(message).not.toContain("<lekcija>");
+    expect(message).toContain('<ranija_lekcija predavanje="1">');
+    expect(buildQuizBuilderInstruction()).toContain('cumulative review "K<n>"');
+  });
+
   it("has no earlier lesson section when there are no earlier lessons", () => {
     const message = buildQuizBuilderMessage({
       plan: planFixture(),

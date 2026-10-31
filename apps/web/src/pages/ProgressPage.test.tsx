@@ -58,7 +58,8 @@ const progress = (over: Partial<CourseProgress> = {}): CourseProgress => ({
     },
   ],
   observations: ["Meša pojmove replikacije i particionisanja."],
-  flags: { classesWithoutLesson: [], ungradedSubmissions: [] },
+  cumulative: [],
+  flags: { classesWithoutLesson: [], ungradedSubmissions: [], cumulativeDue: null },
   ...over,
 });
 
@@ -120,6 +121,7 @@ describe("ProgressPage", () => {
           flags: {
             classesWithoutLesson: [],
             ungradedSubmissions: [{ submissionId: 9, quizCode: "P01", submittedAt: "x" }],
+            cumulativeDue: null,
           },
           quizHistory: [entry({ gradingStatus: "failed", openScore: null, totalScore: null })],
         });
@@ -237,6 +239,7 @@ describe("ProgressPage", () => {
     const flagged = () =>
       progress({
         flags: {
+          cumulativeDue: null,
           classesWithoutLesson: [{ classId: 7, number: 3, title: "Kafka", status: "draft" }],
           ungradedSubmissions: [
             {

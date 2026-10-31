@@ -7,6 +7,8 @@ export const MISCONCEPTION = "Batch je uvek sporiji od stream obrade";
 
 export function ctxFixture(overrides: Partial<QuizContext> = {}): QuizContext {
   return {
+    kind: "lesson",
+    coveredClasses: [],
     course: { name: "Kurs za test", persona: null, assessmentFormat: null },
     class: { id: 2, number: 2, title: "Obrada podataka" },
     code: "P02",
@@ -202,5 +204,65 @@ export function quizFixture(): Quiz {
         keyPoints: ["Prva tačka", "Druga tačka"],
       },
     ],
+  };
+}
+
+/** A cumulative review K1 over classes 1..2: no current class, every topic of both classes. */
+export function cumulativeCtxFixture(overrides: Partial<QuizContext> = {}): QuizContext {
+  const base = ctxFixture();
+  const topic = (name: string, rating: "?" | "✗" | "~" | "✓", classNumber: number) => ({
+    name,
+    rating,
+    deferred: false,
+    deferredNote: null,
+    history: [],
+    classNumber,
+  });
+  return {
+    ...base,
+    kind: "cumulative",
+    class: { id: 2, number: 2, title: "Obrada podataka" },
+    coveredClasses: [
+      { classNumber: 1, title: "Skladišta" },
+      { classNumber: 2, title: "Obrada podataka" },
+    ],
+    code: "K1",
+    lessonMd: "",
+    topics: [],
+    earlierTopics: [
+      base.earlierTopics[0]!,
+      topic("Batch obrada", "✓", 2),
+      topic("Stream obrada", "~", 2),
+    ],
+    earlierLessons: [
+      base.earlierLessons[0]!,
+      { classNumber: 2, title: "Obrada podataka", lessonMd: base.lessonMd },
+    ],
+    backlog: [],
+    ...overrides,
+  };
+}
+
+/** A plan that satisfies `cumulativeCtxFixture()`: every row a repeat with its class number. */
+export function cumulativePlanFixture(): QuizPlan {
+  const base = planFixture();
+  const classOf: Record<string, number> = {
+    "Batch obrada": 2,
+    "Stream obrada": 2,
+    "Skladišta podataka": 1,
+  };
+  return {
+    ...base,
+    code: "K1",
+    title: "Kumulativni pregled 1",
+    subtitle: "Predavanja 1-2 · kumulativni test",
+    leftOut: [],
+    questions: base.questions.map((q) => ({
+      ...q,
+      isRepeat: true,
+      classNumber: classOf[q.topic]!,
+      ref: `Predavanje ${classOf[q.topic]} › Odeljak`,
+      targetsMisconception: null,
+    })),
   };
 }

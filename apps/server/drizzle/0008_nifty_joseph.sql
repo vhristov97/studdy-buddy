@@ -1,0 +1,1 @@
+ALTER TABLE `generation_job` ADD `quiz_code` text;

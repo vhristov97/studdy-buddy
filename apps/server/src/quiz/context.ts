@@ -4,6 +4,7 @@ import type { Db } from "../db/client.js";
 import { backlogItem, classTable, course, topic as topicTable } from "../db/schema.js";
 import { loadBacklog, loadObservations } from "../grading/context.js";
 import { getLessonView } from "../repositories/lessons.js";
+import { parseCumulativeCode, readyClasses, resolveCumulativeTarget } from "./cumulative.js";
 
 export interface QuizTopicHistoryEntry {
   source: "notes" | "quiz" | "grading";
@@ -50,12 +51,18 @@ export const MAX_EARLIER_LESSONS = 3;
 
 /** Everything the quiz planner (and, in part, the builder and reviewer) needs about one class. */
 export interface QuizContext {
+  /** `lesson`: the per-class quiz "P<NN>"; `cumulative`: the review "K<n>" over several classes. */
+  kind: "lesson" | "cumulative";
   course: { name: string; persona: string | null; assessmentFormat: string | null };
+  /** The class of the quiz; for a cumulative review the highest class it covers. */
   class: { id: number; number: number; title: string };
-  /** The quiz code for this class, e.g. "P01". */
+  /** The classes a cumulative review covers, by number; empty for a lesson quiz. */
+  coveredClasses: { classNumber: number; title: string }[];
+  /** The quiz code: "P01" for a class, "K1" for a cumulative review. */
   code: string;
+  /** The class's lesson; empty for a cumulative review (all its lessons are in `earlierLessons`). */
   lessonMd: string;
-  /** Topics of this class, in lesson order. */
+  /** Topics of this class, in lesson order; empty for a cumulative review (no "current class"). */
   topics: QuizTopicInput[];
   /**
    * Weak topics of earlier classes (rated ✗ or ~, or with misconception history) plus every
@@ -106,6 +113,33 @@ function isRepeatCandidate(topic: QuizTopicInput): boolean {
   );
 }
 
+/**
+ * The unresolved backlog of a course with deferred items marked: a deferred topic stays on the list
+ * for the planner to see but is never tested.
+ */
+export function loadBacklogWithDeferred(db: Db, courseId: number): BacklogItem[] {
+  const deferredKeys = new Set(
+    db
+      .select({ name: topicTable.name, classNumber: classTable.number })
+      .from(backlogItem)
+      .innerJoin(topicTable, eq(topicTable.id, backlogItem.topicId))
+      .innerJoin(classTable, eq(classTable.id, topicTable.classId))
+      .where(
+        and(
+          eq(backlogItem.courseId, courseId),
+          isNull(backlogItem.resolvedAt),
+          eq(topicTable.deferred, true),
+        ),
+      )
+      .all()
+      .map((b) => JSON.stringify([b.name, b.classNumber])),
+  );
+  return loadBacklog(db, courseId).map((b) => ({
+    ...b,
+    deferred: deferredKeys.has(JSON.stringify([b.topic, b.classNumber])),
+  }));
+}
+
 /** Loads the quiz planner's context for a class. Throws when the class or its lesson is missing. */
 export function loadQuizContext(db: Db, classId: number): QuizContext {
   const row = db
@@ -126,26 +160,7 @@ export function loadQuizContext(db: Db, classId: number): QuizContext {
     .orderBy(asc(classTable.number))
     .all();
   // Unresolved backlog items must be coverable as repeats, weak or not.
-  const deferredKeys = new Set(
-    db
-      .select({ name: topicTable.name, classNumber: classTable.number })
-      .from(backlogItem)
-      .innerJoin(topicTable, eq(topicTable.id, backlogItem.topicId))
-      .innerJoin(classTable, eq(classTable.id, topicTable.classId))
-      .where(
-        and(
-          eq(backlogItem.courseId, row.cls.courseId),
-          isNull(backlogItem.resolvedAt),
-          eq(topicTable.deferred, true),
-        ),
-      )
-      .all()
-      .map((b) => JSON.stringify([b.name, b.classNumber])),
-  );
-  const backlog: BacklogItem[] = loadBacklog(db, row.cls.courseId).map((b) => ({
-    ...b,
-    deferred: deferredKeys.has(JSON.stringify([b.topic, b.classNumber])),
-  }));
+  const backlog = loadBacklogWithDeferred(db, row.cls.courseId);
   // A deferred topic is never a repeat candidate; it stays in the backlog list only.
   const backlogKeys = new Set(
     backlog.filter((b) => !b.deferred).map((b) => JSON.stringify([b.topic, b.classNumber])),
@@ -185,18 +200,122 @@ export function loadQuizContext(db: Db, classId: number): QuizContext {
   }));
 
   return {
+    kind: "lesson",
     course: {
       name: row.course.name,
       persona: row.course.persona,
       assessmentFormat: row.course.assessmentFormat,
     },
     class: { id: row.cls.id, number: row.cls.number, title: row.cls.title },
+    coveredClasses: [],
     code: lessonQuizCode(row.cls.number),
     lessonMd: lesson.bodyMd,
     topics: lesson.topics.map(toTopicInput),
     earlierTopics,
     earlierLessons,
     backlog,
+    observations: loadObservations(db),
+  };
+}
+
+/**
+ * Total lesson characters a cumulative review's planner, builder and reviewer get; beyond that
+ * every lesson is cut proportionally (see {@link loadCumulativeContext}).
+ */
+export const MAX_CUMULATIVE_LESSON_CHARS = 200_000;
+
+export interface CumulativeContextOptions {
+  /** The review covers the ready classes up to and including this class number. Default: from the code. */
+  coversThrough?: number;
+  /** Override of {@link MAX_CUMULATIVE_LESSON_CHARS} (tests). */
+  maxLessonChars?: number;
+  /** Called with a message when lessons had to be shortened. */
+  onWarn?: (message: string) => void;
+}
+
+const TRUNCATION_MARK = "[... ostatak lekcije izostavljen zbog obima; naslovi izostavljenog dela: ";
+
+/** Cuts a lesson to about `limit` characters at a line boundary and lists the headings that were cut off. */
+function truncateLesson(lessonMd: string, limit: number): string {
+  if (lessonMd.length <= limit) return lessonMd;
+  let cut = lessonMd.slice(0, limit);
+  const lastBreak = cut.lastIndexOf("\n");
+  if (lastBreak > limit * 0.8) cut = cut.slice(0, lastBreak);
+  const headings = lessonMd
+    .slice(cut.length)
+    .split("\n")
+    .filter((line) => /^#{1,6}\s/.test(line))
+    .map((line) => line.replace(/^#+\s*/, "").trim());
+  return `${cut.trimEnd()}\n\n${TRUNCATION_MARK}${headings.length > 0 ? headings.join("; ") : "nema"}]`;
+}
+
+/**
+ * Loads the planner's context for the cumulative review `code` (spec §11), covering every ready
+ * class up to `opts.coversThrough` (default: what the code stands for, see
+ * `resolveCumulativeTarget`). Throws when nothing can be covered.
+ *
+ * Differences from a lesson quiz: no current class (`topics` is empty, `lessonMd` is ""); all
+ * covered lessons are in `earlierLessons`; `earlierTopics` has every not deferred topic of the
+ * covered classes (not only the weak ones), so the planner can see the whole picture; `backlog`
+ * is the unresolved items of the covered classes. When the lessons together exceed the size limit,
+ * each is cut proportionally to its length and ends with the list of headings that were cut off.
+ */
+export function loadCumulativeContext(
+  db: Db,
+  courseId: number,
+  code: string,
+  opts: CumulativeContextOptions = {},
+): QuizContext {
+  if (parseCumulativeCode(code) === null) throw new Error(`"${code}" is not a cumulative code.`);
+  const courseRow = db.select().from(course).where(eq(course.id, courseId)).get();
+  if (!courseRow) throw new Error(`Course ${courseId} does not exist.`);
+
+  const ready = readyClasses(db, courseId);
+  const throughNumber =
+    opts.coversThrough ?? resolveCumulativeTarget(db, courseId, code).throughClass.number;
+  const covered = ready.filter((c) => c.number <= throughNumber);
+  const highest = covered.at(-1);
+  if (!highest) throw new Error(`Course ${courseId} has no ready class to cover.`);
+
+  const views = covered.map((cls) => ({ cls, view: getLessonView(db, cls.id)! }));
+  const maxChars = opts.maxLessonChars ?? MAX_CUMULATIVE_LESSON_CHARS;
+  const total = views.reduce((sum, v) => sum + v.view.bodyMd.length, 0);
+  const scale = total > maxChars ? maxChars / total : 1;
+  if (scale < 1) {
+    opts.onWarn?.(
+      `The lessons of ${code} total ${total} characters (limit ${maxChars}); each is cut to ${Math.round(scale * 100)}%.`,
+    );
+  }
+
+  const earlierLessons: EarlierLesson[] = views.map(({ cls, view }) => ({
+    classNumber: cls.number,
+    title: cls.title,
+    lessonMd:
+      scale < 1 ? truncateLesson(view.bodyMd, Math.floor(view.bodyMd.length * scale)) : view.bodyMd,
+  }));
+  const earlierTopics: QuizContext["earlierTopics"] = views.flatMap(({ cls, view }) =>
+    view.topics
+      .map(toTopicInput)
+      .filter((t) => !t.deferred)
+      .map((t) => ({ ...t, classNumber: cls.number })),
+  );
+  const coveredNumbers = new Set(covered.map((c) => c.number));
+
+  return {
+    kind: "cumulative",
+    course: {
+      name: courseRow.name,
+      persona: courseRow.persona,
+      assessmentFormat: courseRow.assessmentFormat,
+    },
+    class: { id: highest.id, number: highest.number, title: highest.title },
+    coveredClasses: covered.map((c) => ({ classNumber: c.number, title: c.title })),
+    code,
+    lessonMd: "",
+    topics: [],
+    earlierTopics,
+    earlierLessons,
+    backlog: loadBacklogWithDeferred(db, courseId).filter((b) => coveredNumbers.has(b.classNumber)),
     observations: loadObservations(db),
   };
 }

@@ -1,11 +1,18 @@
 import type { FastifyPluginAsync } from "fastify";
-import type { ClassJobs, PipelineEvent } from "@studdy/shared";
+import {
+  RequestCumulativeBody,
+  type ClassJobs,
+  type CumulativeStatus,
+  type PipelineEvent,
+} from "@studdy/shared";
 import type { Coordinator } from "../agents/coordinator.js";
 import type { Db } from "../db/client.js";
+import { cumulativeStatus } from "../quiz/cumulative.js";
+import { getCourse } from "../repositories/courses.js";
 import { getClassStatus, getLessonView, listJobs } from "../repositories/lessons.js";
 import { DOMAIN_EVENTS } from "../pipeline/events.js";
 import type { Pipeline } from "../pipeline/pipeline.js";
-import { notFound, parseId } from "./errors.js";
+import { notFound, parseBody, parseId } from "./errors.js";
 
 export interface GenerationRouteOptions {
   db: Db;
@@ -42,7 +49,25 @@ export const generationRoutes: FastifyPluginAsync<GenerationRouteOptions> = asyn
     }),
   );
 
+  app.get<{ Params: { courseId: string } }>(
+    "/api/courses/:courseId/cumulative",
+    async (request): Promise<CumulativeStatus> => {
+      const courseId = parseId("courseId", request.params.courseId);
+      if (!getCourse(db, courseId)) throw notFound("Course");
+      return cumulativeStatus(db, courseId);
+    },
+  );
+
   if (!pipeline || !coordinator) return;
+
+  app.post<{ Params: { courseId: string } }>(
+    "/api/courses/:courseId/cumulative",
+    async (request, reply) => {
+      const courseId = parseId("courseId", request.params.courseId);
+      const { code } = parseBody(RequestCumulativeBody, request.body ?? {});
+      return reply.code(202).send(pipeline.requestCumulative(courseId, code));
+    },
+  );
 
   app.post<{ Params: ClassParams }>("/api/classes/:classId/generate", async (request, reply) => {
     const classId = parseId("classId", request.params.classId);

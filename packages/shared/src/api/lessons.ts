@@ -38,6 +38,11 @@ export const GenerationJob = z.object({
   submissionId: z.number().int().nullable(),
   /** The visualization suggestion a `viz` job builds; null for other kinds. */
   suggestionId: z.number().int().nullable(),
+  /**
+   * The cumulative quiz code ("K1") a `quiz` job builds; null for lesson quizzes and other kinds.
+   * A cumulative job's `classId` is the highest class it covers.
+   */
+  quizCode: z.string().nullable(),
   /** ISO 8601. */
   createdAt: z.string(),
   /** ISO 8601; null while running. */

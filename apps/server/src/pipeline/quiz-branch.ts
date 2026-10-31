@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { validateQuiz, type GenerationJob, type QuizDraft } from "@studdy/shared";
 import type { Coordinator, CoordinatorLogger } from "../agents/coordinator.js";
 import {
@@ -12,12 +12,14 @@ import { StageError, type StageSession } from "../agents/stage.js";
 import type { Db } from "../db/client.js";
 import {
   classTable,
+  course,
   generationJob,
   quiz as quizTable,
   quizPlan,
   type QuizPlanLogEntry,
 } from "../db/schema.js";
-import { loadQuizContext, notesMisconceptions } from "../quiz/context.js";
+import { loadCumulativeContext, loadQuizContext, notesMisconceptions } from "../quiz/context.js";
+import { resolveCumulativeTarget } from "../quiz/cumulative.js";
 import { ConflictError } from "../repositories/conflict.js";
 import { getJob } from "../repositories/lessons.js";
 import { notFound } from "../routes/errors.js";
@@ -54,6 +56,14 @@ export interface QuizBranch {
    * Throws 404/409 `ApiError`s.
    */
   requestRegeneration(classId: number): GenerationJob;
+  /**
+   * Starts the cumulative review `code` (default: the due one, else the smallest free `K<n>`)
+   * over every ready class up to the one the review covers. The job belongs to the highest covered
+   * class (`class_id`; jobs need a class for the event stream) and carries `quiz_code`; the
+   * released quiz has `class_id` null. A failed job of the same code is retried from scratch
+   * (re-plan + re-build). Throws 404/409 `ApiError`s.
+   */
+  requestCumulative(courseId: number, code?: string): GenerationJob;
 }
 
 export const QUIZ_STAGES = {
@@ -105,12 +115,27 @@ export function registerQuizBranch({
     return truncate(message);
   }
 
-  /** Inserts a running quiz job for the class and returns its id. Call inside a transaction. */
-  function insertQuizJob(tx: Tx, classId: number, parentJobId: number | null): number {
+  /**
+   * Inserts a running quiz job for the class and returns its id. `quizCode` is null for the
+   * class's lesson quiz and the review code ("K1") for a cumulative review. Call inside a
+   * transaction.
+   */
+  function insertQuizJob(
+    tx: Tx,
+    classId: number,
+    parentJobId: number | null,
+    quizCode: string | null = null,
+  ): number {
     const previous = tx
       .select({ attempt: generationJob.attempt })
       .from(generationJob)
-      .where(and(eq(generationJob.classId, classId), eq(generationJob.kind, "quiz")))
+      .where(
+        and(
+          eq(generationJob.classId, classId),
+          eq(generationJob.kind, "quiz"),
+          quizCode === null ? isNull(generationJob.quizCode) : eq(generationJob.quizCode, quizCode),
+        ),
+      )
       .orderBy(desc(generationJob.id))
       .limit(1)
       .get();
@@ -123,6 +148,7 @@ export function registerQuizBranch({
         status: "running",
         attempt: (previous?.attempt ?? 0) + 1,
         parentJobId,
+        quizCode,
       })
       .returning({ id: generationJob.id })
       .get().id;
@@ -148,7 +174,13 @@ export function registerQuizBranch({
       const last = tx
         .select()
         .from(generationJob)
-        .where(and(eq(generationJob.classId, classId), eq(generationJob.kind, "quiz")))
+        .where(
+          and(
+            eq(generationJob.classId, classId),
+            eq(generationJob.kind, "quiz"),
+            isNull(generationJob.quizCode),
+          ),
+        )
         .orderBy(desc(generationJob.id))
         .limit(1)
         .get();
@@ -164,6 +196,53 @@ export function registerQuizBranch({
         .get();
       if (released) throw new ConflictError("The class already has a released quiz");
       return insertQuizJob(tx, classId, last?.id ?? latestLessonJobId(tx, classId));
+    });
+    emitJob(jobId);
+    const payload: QuizRequestedPayload = { classId, jobId };
+    coordinator.emit(DOMAIN_EVENTS.QUIZ_REQUESTED, payload);
+    return getJob(db, jobId)!;
+  }
+
+  function requestCumulative(courseId: number, code?: string): GenerationJob {
+    const { jobId, classId } = db.transaction((tx) => {
+      const courseRow = tx
+        .select({ id: course.id })
+        .from(course)
+        .where(eq(course.id, courseId))
+        .get();
+      if (!courseRow) throw notFound("Course");
+      const target = resolveCumulativeTarget(tx, courseId, code);
+      const courseClassIds = tx
+        .select({ id: classTable.id })
+        .from(classTable)
+        .where(eq(classTable.courseId, courseId))
+        .all()
+        .map((c) => c.id);
+      const last = tx
+        .select()
+        .from(generationJob)
+        .where(
+          and(
+            inArray(generationJob.classId, courseClassIds),
+            eq(generationJob.kind, "quiz"),
+            eq(generationJob.quizCode, target.code),
+          ),
+        )
+        .orderBy(desc(generationJob.id))
+        .limit(1)
+        .get();
+      if (last?.status === "running") {
+        throw new ConflictError(`The review ${target.code} is already generating`);
+      }
+      return {
+        jobId: insertQuizJob(
+          tx,
+          target.throughClass.id,
+          last?.status === "failed" ? last.id : null,
+          target.code,
+        ),
+        classId: target.throughClass.id,
+      };
     });
     emitJob(jobId);
     const payload: QuizRequestedPayload = { classId, jobId };
@@ -196,6 +275,16 @@ export function registerQuizBranch({
     return row.courseId;
   }
 
+  function classNumberOf(classId: number): number {
+    const row = db
+      .select({ number: classTable.number })
+      .from(classTable)
+      .where(eq(classTable.id, classId))
+      .get();
+    if (!row) throw new Error("The class no longer exists");
+    return row.number;
+  }
+
   function courseCodes(courseId: number): string[] {
     return db
       .select({ code: quizTable.code })
@@ -209,8 +298,18 @@ export function registerQuizBranch({
     return new Error(`A quiz with the code ${code} already exists in this course`);
   }
 
-  /** One transaction: the quiz, the plan's link to it, the job succeeded. */
-  function release(jobId: number, classId: number, planId: number, draft: QuizDraft, code: string) {
+  /**
+   * One transaction: the quiz, the plan's link to it, the job succeeded. A cumulative review
+   * (`cumulative`) belongs to no class (`quiz.class_id` null).
+   */
+  function release(
+    jobId: number,
+    classId: number,
+    planId: number,
+    draft: QuizDraft,
+    code: string,
+    cumulative: boolean,
+  ) {
     return db.transaction((tx) => {
       const courseId = courseOf(classId);
       const existing = tx
@@ -223,7 +322,7 @@ export function registerQuizBranch({
         .insert(quizTable)
         .values({
           courseId,
-          classId,
+          classId: cumulative ? null : classId,
           code,
           title: draft.quiz.title,
           subtitle: draft.quiz.subtitle,
@@ -258,9 +357,25 @@ export function registerQuizBranch({
     let stage: string = QUIZ_STAGES.planner;
     let session: StageSession<QuizDraft> | undefined;
     let released: { quizId: number; code: string };
+    let quizCode: string | null;
     try {
-      const ctx = loadQuizContext(db, classId);
       const courseId = courseOf(classId);
+      quizCode =
+        db
+          .select({ quizCode: generationJob.quizCode })
+          .from(generationJob)
+          .where(eq(generationJob.id, jobId))
+          .get()?.quizCode ?? null;
+      const ctx =
+        quizCode === null
+          ? loadQuizContext(db, classId)
+          : loadCumulativeContext(db, courseId, quizCode, {
+              coversThrough: classNumberOf(classId),
+              onWarn: (message) =>
+                logger.warn
+                  ? logger.warn({ jobId, classId }, message)
+                  : logger.error({ jobId, classId }, message),
+            });
 
       const plan = await planQuiz(ctx, {
         onEvent: progressFor({ classId, jobId, stage: QUIZ_STAGES.planner }),
@@ -325,7 +440,10 @@ export function registerQuizBranch({
         saveProgress(draft);
       }
 
-      released = { quizId: release(jobId, classId, planId, draft, plan.code), code: plan.code };
+      released = {
+        quizId: release(jobId, classId, planId, draft, plan.code, quizCode !== null),
+        code: plan.code,
+      };
     } catch (error) {
       logger.error({ err: error, jobId, classId, stage }, "quiz generation failed");
       markFailed(jobId, stage, error);
@@ -342,5 +460,5 @@ export function registerQuizBranch({
   coordinator.on<QuizRequestedPayload>(DOMAIN_EVENTS.QUIZ_REQUESTED, runQuizJob);
   if (autoStart) coordinator.on<LessonReadyPayload>(DOMAIN_EVENTS.LESSON_READY, startQuizJob);
 
-  return { requestRegeneration };
+  return { requestRegeneration, requestCumulative };
 }
