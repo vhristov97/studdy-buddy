@@ -300,7 +300,13 @@ describe("cumulative review branch", () => {
   it("rejects a course with no ready lesson", async () => {
     const response = await post();
     expect(response.statusCode).toBe(409);
-    expect(await status()).toEqual({ cadence: 2, readyClassCount: 0, due: null, existing: [] });
+    expect(await status()).toEqual({
+      cadence: 2,
+      readyClassCount: 0,
+      nextCode: "K1",
+      due: null,
+      existing: [],
+    });
   });
 
   it("builds a manual review over all ready classes for a course without cadence", async () => {

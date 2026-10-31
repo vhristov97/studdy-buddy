@@ -197,10 +197,11 @@ export function useCourseProgress(courseId: number) {
 }
 
 /** Cumulative review status of a course: cadence, the review that is due, the released ones. */
-export function useCumulativeStatus(courseId: number) {
+export function useCumulativeStatus(courseId: number, enabled = true) {
   return useQuery({
     queryKey: queryKeys.courseCumulative(courseId),
     queryFn: () => apiGet<CumulativeStatus>(`/api/courses/${courseId}/cumulative`),
+    enabled,
   });
 }
 

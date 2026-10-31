@@ -6,6 +6,7 @@ import { useClassEvents } from "../api/events";
 import {
   useClassJobs,
   useCourseQuizzes,
+  useCumulativeStatus,
   useGradeSubmission,
   useRegenerateQuiz,
   useRequestCumulative,
@@ -65,7 +66,15 @@ export function PipelinePanel({ classId, courseId, classStatus, onRetry, retryin
     ),
   ];
   const submissions = useSubmissions(gradingIds);
-  const quizzes = useCourseQuizzes(courseId, hasSucceededQuiz || gradingIds.length > 0);
+  // A failed review is retried only while it is still the next one to build.
+  const hasFailedReview = jobs.some(
+    (job) => job.kind === "quiz" && job.quizCode !== null && job.status === "failed",
+  );
+  const cumulative = useCumulativeStatus(courseId, hasFailedReview);
+  const quizzes = useCourseQuizzes(
+    courseId,
+    hasSucceededQuiz || gradingIds.length > 0 || hasFailedReview,
+  );
   const gradingTargets = new Map<number, GradingTarget>();
   gradingIds.forEach((id, i) => {
     const submission = submissions[i]?.data;
@@ -96,6 +105,9 @@ export function PipelinePanel({ classId, courseId, classStatus, onRetry, retryin
       retrying={retrying}
       releasedQuiz={quizzes.data?.find((quiz) => quiz.classId === classId)}
       cumulativeQuizzes={quizzes.data?.filter((quiz) => quiz.classId === null)}
+      canRebuildCumulative={(code) =>
+        cumulative.data?.nextCode === code && !quizzes.data?.some((quiz) => quiz.code === code)
+      }
       // The server builds the next review; a stale explicit code (a failed job from before the
       // "next code only" rule) would be refused.
       onRebuildCumulative={(code) => {
@@ -153,6 +165,11 @@ interface StagesProps {
   cumulativeQuizzes?: readonly QuizSummary[];
   /** Builds a failed cumulative review again from scratch; leave out to hide the button. */
   onRebuildCumulative?: (code: string) => void;
+  /**
+   * Whether a failed review can still be built again (it is the next review and not released);
+   * otherwise its row shows a stale-attempt note instead of the button. Defaults to always.
+   */
+  canRebuildCumulative?: (code: string) => boolean;
   rebuildingCumulative?: boolean;
   rebuildCumulativeError?: { code: string; message: string } | null;
   /**
@@ -180,6 +197,7 @@ export function PipelineStages({
   releasedQuiz,
   cumulativeQuizzes,
   onRebuildCumulative,
+  canRebuildCumulative,
   rebuildingCumulative,
   rebuildCumulativeError,
   onStartQuiz,
@@ -238,7 +256,8 @@ export function PipelineStages({
               {kind === "quiz" &&
                 quizCode !== null &&
                 latest.status === "failed" &&
-                onRebuildCumulative && (
+                onRebuildCumulative &&
+                ((canRebuildCumulative?.(quizCode) ?? true) ? (
                   <>
                     <Button
                       variant="primary"
@@ -251,7 +270,9 @@ export function PipelineStages({
                       <ErrorMessage>{rebuildCumulativeError.message}</ErrorMessage>
                     )}
                   </>
-                )}
+                ) : (
+                  <p className={styles.idle}>zastareo pokušaj</p>
+                ))}
               {kind === "quiz" &&
                 quizCode === null &&
                 latest.status === "failed" &&

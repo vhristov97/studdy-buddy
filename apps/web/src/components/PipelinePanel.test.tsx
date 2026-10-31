@@ -326,17 +326,32 @@ describe("PipelinePanel", () => {
     );
   });
 
-  it("retries a failed K job without a code, so the server builds the next review", async () => {
-    const { requests } = mockApi({
-      "GET /api/classes/5/jobs": () => ({
-        jobs: [
-          { ...quizJob({ ...FAILED, error: "K greška" }), quizCode: "K4" },
-          quizJob({ id: 4, status: "succeeded", finishedAt: "2026-01-01T10:00:55.000Z" }),
-          lessonDone(),
-        ],
-      }),
-      "POST /api/courses/1/cumulative": () => quizJob({ id: 9, attempt: 1 }),
-    });
+  const cumulativeStatus = (nextCode: string) => ({
+    cadence: 4,
+    readyClassCount: 4,
+    nextCode,
+    due: null,
+    existing: [],
+  });
+  const failedK = (code: string) => ({
+    ...quizJob({ ...FAILED, error: "K greška" }),
+    quizCode: code,
+  });
+  const kRoutes = (code: string, nextCode: string, released: QuizSummary[] = []) => ({
+    "GET /api/classes/5/jobs": () => ({
+      jobs: [
+        failedK(code),
+        quizJob({ id: 4, status: "succeeded", finishedAt: "2026-01-01T10:00:55.000Z" }),
+        lessonDone(),
+      ],
+    }),
+    "GET /api/courses/1/cumulative": () => cumulativeStatus(nextCode),
+    "GET /api/courses/1/quizzes": () => released,
+    "POST /api/courses/1/cumulative": () => quizJob({ id: 9, attempt: 1 }),
+  });
+
+  it("retries a failed K job that is the next review, without a code", async () => {
+    const { requests } = mockApi(kRoutes("K1", "K1"));
     renderPanel();
     await userEvent.click(await screen.findByRole("button", { name: "Napravi ispočetka" }));
     await waitFor(() =>
@@ -345,8 +360,22 @@ describe("PipelinePanel", () => {
       ),
     );
     const post = requests.find((r) => r.path === "/api/courses/1/cumulative")!;
-    // no explicit code (a stale one would be refused as not the next review)
+    // no explicit code (the server builds the next review)
     expect(post.body).toBeUndefined();
+  });
+
+  it("offers no retry for a failed K job whose code was released since", async () => {
+    mockApi(kRoutes("K1", "K2", [quizSummary({ id: 9, code: "K1", classId: null })]));
+    renderPanel();
+    expect(await screen.findByText("zastareo pokušaj")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Napravi ispočetka" })).toBeNull();
+  });
+
+  it("offers no retry for a failed legacy K job that is not the next review", async () => {
+    mockApi(kRoutes("K4", "K1"));
+    renderPanel();
+    expect(await screen.findByText("zastareo pokušaj")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Napravi ispočetka" })).toBeNull();
   });
 
   it("shows the server message when the regeneration is refused", async () => {

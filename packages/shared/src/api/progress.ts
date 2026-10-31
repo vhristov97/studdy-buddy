@@ -105,6 +105,8 @@ export const CumulativeStatus = z.object({
   cadence: z.number().int().nullable(),
   /** Classes with a ready lesson. */
   readyClassCount: z.number().int(),
+  /** The code of the next review to be built: the smallest `K<n>` without a released quiz. */
+  nextCode: z.string().regex(/^K\d+$/),
   /** The earliest missing review the cadence calls for; null when none is due (always null without cadence). */
   due: z
     .object({

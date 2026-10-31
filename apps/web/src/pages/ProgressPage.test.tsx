@@ -327,6 +327,7 @@ describe("ProgressPage", () => {
     const status = (over: Partial<CumulativeStatus> = {}): CumulativeStatus => ({
       cadence: 4,
       readyClassCount: 4,
+      nextCode: "K1",
       due: null,
       existing: [],
       ...over,
