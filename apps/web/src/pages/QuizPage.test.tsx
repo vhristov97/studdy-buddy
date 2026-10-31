@@ -319,6 +319,24 @@ describe("QuizPage player", () => {
       expect(localStorage.getItem("studdy:quiz-draft:1")).toBeNull();
     });
 
+    it("blocks a submission without any answer and does not post", async () => {
+      const { user, requests } = await openPlayer({
+        "POST /api/quizzes/1/submissions": () => json(detail(), 201),
+      });
+      await user.type(within(card(/kontejnera/)).getByLabelText("Odgovor"), "   ");
+      await user.click(screen.getByRole("button", { name: "Predaj kviz" }));
+      expect(screen.getByRole("alert")).toHaveTextContent("Nijedno pitanje nije odgovoreno.");
+      await user.click(screen.getByRole("button", { name: "Predaj kviz" }));
+      expect(screen.getByRole("alert")).toHaveTextContent("Nijedno pitanje nije odgovoreno.");
+      expect(requests.some((r) => r.method === "POST")).toBe(false);
+
+      // Ne znam is an answer: the usual two-step warning follows instead.
+      await user.click(within(card(/Koji protokol/)).getByRole("radio", { name: "Ne znam" }));
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Predaj kviz" }));
+      expect(screen.getByRole("alert")).toHaveTextContent("Nisi odgovorio na");
+    });
+
     it("submits straight away when everything is answered", async () => {
       const { user, requests } = await openPlayer({
         "POST /api/quizzes/1/submissions": () => json(detail(), 201),
@@ -351,6 +369,7 @@ describe("QuizPage player", () => {
         "POST /api/quizzes/1/submissions": () =>
           apiError(400, "validation", "Invalid answers", ["q1: option 7 is out of range"]),
       });
+      await user.click(within(card(/jedan plus jedan/)).getByRole("radio", { name: "Dva" }));
       await user.click(screen.getByRole("button", { name: "Predaj kviz" }));
       await user.click(screen.getByRole("button", { name: "Predaj kviz" }));
       expect(await screen.findByText("q1: option 7 is out of range")).toBeInTheDocument();
@@ -363,6 +382,7 @@ describe("QuizPage player", () => {
       const api = await openPlayer({
         "POST /api/quizzes/1/submissions": () => json(detail(), 201),
       });
+      await api.user.click(within(card(/jedan plus jedan/)).getByRole("radio", { name: "Dva" }));
       await api.user.click(screen.getByRole("button", { name: "Predaj kviz" }));
       await api.user.click(screen.getByRole("button", { name: "Predaj kviz" }));
       await screen.findAllByText("Rezultat: 2,5 / 4");
@@ -425,6 +445,7 @@ describe("QuizPage player", () => {
       const { user } = await openPlayer({
         "POST /api/quizzes/1/submissions": () => json(detail({ openPending: 2 }), 201),
       });
+      await user.click(within(card(/jedan plus jedan/)).getByRole("radio", { name: "Dva" }));
       await user.click(screen.getByRole("button", { name: "Predaj kviz" }));
       await user.click(screen.getByRole("button", { name: "Predaj kviz" }));
       expect(await screen.findAllByText("2 otvorena pitanja čekaju ocenjivanje")).toHaveLength(2);
@@ -449,6 +470,7 @@ describe("QuizPage player", () => {
     it("shows the submission JSON with a copy button and keeps the draft", async () => {
       const { user } = await openPlayer({ "POST /api/quizzes/1/submissions": failing() });
       await user.click(within(card(/jedan plus jedan/)).getByRole("radio", { name: "Dva" }));
+      await user.click(within(card(/jedan plus jedan/)).getByRole("radio", { name: "Dva" }));
       await user.click(screen.getByRole("button", { name: "Predaj kviz" }));
       await user.click(screen.getByRole("button", { name: "Predaj kviz" }));
 
@@ -467,6 +489,7 @@ describe("QuizPage player", () => {
 
     it("falls back to a select-all hint when the clipboard is unavailable", async () => {
       const { user } = await openPlayer({ "POST /api/quizzes/1/submissions": failing() });
+      await user.click(within(card(/jedan plus jedan/)).getByRole("radio", { name: "Dva" }));
       await user.click(screen.getByRole("button", { name: "Predaj kviz" }));
       await user.click(screen.getByRole("button", { name: "Predaj kviz" }));
       await screen.findByLabelText("Odgovori u JSON formatu");
@@ -482,6 +505,7 @@ describe("QuizPage player", () => {
       const { user } = await openPlayer({
         "POST /api/quizzes/1/submissions": () => apiError(500, "internal", "Boom"),
       });
+      await user.click(within(card(/jedan plus jedan/)).getByRole("radio", { name: "Dva" }));
       await user.click(screen.getByRole("button", { name: "Predaj kviz" }));
       await user.click(screen.getByRole("button", { name: "Predaj kviz" }));
       expect(await screen.findByLabelText("Odgovori u JSON formatu")).toBeInTheDocument();

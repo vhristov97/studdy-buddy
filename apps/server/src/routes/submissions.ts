@@ -1,6 +1,8 @@
 import type { FastifyPluginAsync } from "fastify";
 import {
   CreateSubmissionInput,
+  EMPTY_SUBMISSION_MESSAGE,
+  isEmptySubmission,
   scoreQuiz,
   validateAnswers,
   type SubmissionDetail,
@@ -37,6 +39,9 @@ export const submissionRoutes: FastifyPluginAsync<SubmissionRouteOptions> = asyn
       const errors = validateAnswers(full.quiz, answers);
       if (errors.length > 0) {
         throw new ApiError(400, "validation", "Invalid answers", errors);
+      }
+      if (isEmptySubmission(full.quiz, answers)) {
+        throw new ApiError(400, "validation", EMPTY_SUBMISSION_MESSAGE);
       }
       // The score is always computed here; nothing score-like from the client is trusted.
       const detail = createSubmission(

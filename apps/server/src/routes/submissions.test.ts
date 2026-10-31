@@ -221,9 +221,26 @@ describe("quiz player and submission routes", () => {
       expect(row.resultsJson).toEqual(scoreQuiz(FULL, ANSWERS).results);
     });
 
-    it("accepts an empty submission and scores it zero", async () => {
-      const detail = SubmissionDetail.parse((await submit({})).body);
+    it("scores a submission of only wrong answers zero", async () => {
+      const detail = SubmissionDetail.parse((await submit({ q1: 0 })).body);
       expect(detail).toMatchObject({ autoScore: 0, autoMax: 3, openPending: 0, dontKnow: [] });
+    });
+
+    it("rejects a submission where no question has a value", async () => {
+      for (const answers of [{}, { q4: "   " }, { q3: {} }, { q4: "", q3: {} }]) {
+        const res = await submit(answers);
+        expect(res.status).toBe(400);
+        const error = errorOf(res.body);
+        expect(error.code).toBe("validation");
+        expect(error.message).toBe("Nijedno pitanje nije odgovoreno.");
+      }
+      expect(t.handle.db.select().from(submission).all()).toEqual([]);
+    });
+
+    it("accepts Ne znam as an answer", async () => {
+      const res = await submit({ q1: "?" });
+      expect(res.status).toBe(201);
+      expect(SubmissionDetail.parse(res.body).dontKnow).toEqual(["q1"]);
     });
 
     it("emits submission.created", async () => {

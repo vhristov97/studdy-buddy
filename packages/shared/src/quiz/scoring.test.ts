@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { validQuiz } from "./fixtures";
 import { Quiz } from "./quiz";
 import {
+  EMPTY_SUBMISSION_MESSAGE,
   QuizFeedback,
   SubmissionAnswers,
+  isEmptySubmission,
   scoreQuiz,
   toFeedback,
   validateAnswers,
@@ -41,6 +43,22 @@ describe("scoreQuiz: num", () => {
     });
     expect(scoreQuiz(q, { q2: 0.1 + 0.2 }).results[0]!.status).toBe("correct");
     expect(scoreQuiz(q, { q2: 0.31 }).results[0]!.status).toBe("wrong");
+  });
+
+  it("does not let the float slack swamp tiny answers", () => {
+    const tiny = (answer: number, value: number, tolerance = 0) =>
+      scoreQuiz(
+        Quiz.parse({
+          ...validQuiz,
+          questions: [{ ...validQuiz.questions[1]!, answer, tolerance }],
+        }),
+        { q2: value },
+      ).results[0]!.status;
+    expect(tiny(1e-9, 0)).toBe("wrong");
+    expect(tiny(0, 1e-9)).toBe("wrong");
+    expect(tiny(1e-12, 2e-12)).toBe("wrong");
+    expect(tiny(1e-12, 1e-12)).toBe("correct");
+    expect(tiny(1e-9, 0, 1e-9)).toBe("correct");
   });
 
   it("handles zero tolerance, don't know and unanswered", () => {
@@ -184,6 +202,28 @@ describe("scoreQuiz: open and totals", () => {
       ],
     });
     expect(scoreQuiz(q, { q3: { "0": 0 }, q9: 1 }).autoScore).toBe(1.33);
+  });
+});
+
+describe("isEmptySubmission", () => {
+  it("is empty when no question has a value", () => {
+    expect(isEmptySubmission(quiz, {})).toBe(true);
+    expect(isEmptySubmission(quiz, { q4: "", q3: {} })).toBe(true);
+    expect(isEmptySubmission(quiz, { q4: "  \n " })).toBe(true);
+  });
+
+  it("counts any value, including Ne znam", () => {
+    expect(isEmptySubmission(quiz, { q1: 0 })).toBe(false);
+    expect(isEmptySubmission(quiz, { q2: 0 })).toBe(false);
+    expect(isEmptySubmission(quiz, { q1: "?" })).toBe(false);
+    expect(isEmptySubmission(quiz, { q3: "?" })).toBe(false);
+    expect(isEmptySubmission(quiz, { q3: { "1": 0 } })).toBe(false);
+    expect(isEmptySubmission(quiz, { q4: "tekst" })).toBe(false);
+    expect(isEmptySubmission(quiz, { q4: "", q1: 2 })).toBe(false);
+  });
+
+  it("has a Serbian message", () => {
+    expect(EMPTY_SUBMISSION_MESSAGE).toBe("Nijedno pitanje nije odgovoreno.");
   });
 });
 

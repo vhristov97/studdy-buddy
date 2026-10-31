@@ -5,7 +5,7 @@ import {
   type QuestionFeedback,
   type QuestionResult,
 } from "@studdy/shared";
-import { formatDecimal } from "../lib/format";
+import { formatExact } from "../lib/format";
 import {
   getMatchDraft,
   getTextDraft,
@@ -270,8 +270,8 @@ function NumInput({
       )}
       {feedback && (
         <p className={styles.correctAnswer}>
-          <strong>Tačan odgovor:</strong> {formatDecimal(feedback.answer)}
-          {feedback.tolerance > 0 && ` ± ${formatDecimal(feedback.tolerance)}`}
+          <strong>Tačan odgovor:</strong> {formatExact(feedback.answer)}
+          {feedback.tolerance > 0 && ` ± ${formatExact(feedback.tolerance)}`}
           {feedback.unit ? ` ${feedback.unit}` : ""}
         </p>
       )}

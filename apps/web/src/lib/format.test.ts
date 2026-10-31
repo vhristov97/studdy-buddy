@@ -11,6 +11,7 @@ import {
   formatDate,
   formatDateTime,
   formatDecimal,
+  formatExact,
   formatDuration,
   openAwaitingGrading,
   plural,
@@ -136,6 +137,18 @@ describe("formatDecimal", () => {
     expect(formatDecimal(3)).toBe("3");
     expect(formatDecimal(0.1 + 0.2)).toBe("0,3");
     expect(formatDecimal(-1.25)).toBe("-1,25");
+  });
+});
+
+describe("formatExact", () => {
+  it("keeps the exact value with a decimal comma and no exponent", () => {
+    expect(formatExact(3.5)).toBe("3,5");
+    expect(formatExact(20)).toBe("20");
+    expect(formatExact(-1.25)).toBe("-1,25");
+    expect(formatExact(0.0000001)).toBe("0,0000001");
+    expect(formatExact(1e-12)).toBe("0,000000000001");
+    expect(formatExact(1.5e-7)).toBe("0,00000015");
+    expect(formatExact(1e21)).toBe("1000000000000000000000");
   });
 });
 

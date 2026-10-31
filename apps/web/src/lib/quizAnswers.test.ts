@@ -85,6 +85,19 @@ describe("buildAnswers", () => {
     expect(buildAnswers(quiz, draft)).toEqual(answers);
   });
 
+  it("restores small and large numbers exactly", () => {
+    for (const [n, text] of [
+      [0.0000001, "0,0000001"],
+      [1e-12, "0,000000000001"],
+      [3.5, "3,5"],
+      [20, "20"],
+    ] as const) {
+      const draft = draftFromAnswers(quiz, { q2: n });
+      expect(draft.q2).toEqual({ text, dontKnow: false });
+      expect(buildAnswers(quiz, draft)).toEqual({ q2: n });
+    }
+  });
+
   it("expands a whole-question Ne znam on a match question", () => {
     expect(draftFromAnswers(quiz, { q3: "?" }).q3).toEqual({ "0": "?", "1": "?" });
   });

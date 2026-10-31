@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router";
-import type { PublicQuiz, QuizScore, SubmissionAnswers, SubmissionDetail } from "@studdy/shared";
+import {
+  EMPTY_SUBMISSION_MESSAGE,
+  isEmptySubmission,
+  type PublicQuiz,
+  type QuizScore,
+  type SubmissionAnswers,
+  type SubmissionDetail,
+} from "@studdy/shared";
 import { ApiError } from "../api/client";
 import {
   useCourseQuizzes,
@@ -194,6 +201,7 @@ function LivePlayer({ quiz }: { quiz: PublicQuiz }) {
   const [draft, setDraft] = useState<QuizDraft>(() => loadDraft(quiz));
   const [submission, setSubmission] = useState<SubmissionDetail | null>(null);
   const [warnedFor, setWarnedFor] = useState<number | null>(null);
+  const [emptyTried, setEmptyTried] = useState(false);
   const [attempt, setAttempt] = useState<{
     submittedAt: string;
     answers: SubmissionAnswers;
@@ -215,6 +223,7 @@ function LivePlayer({ quiz }: { quiz: PublicQuiz }) {
   const unanswered = total - answered;
 
   const setValue = (questionId: string, value: DraftValue | undefined) => {
+    setEmptyTried(false);
     setDraft((prev) => {
       const next = { ...prev };
       if (isEmptyValue(value)) delete next[questionId];
@@ -224,11 +233,16 @@ function LivePlayer({ quiz }: { quiz: PublicQuiz }) {
   };
 
   const onSubmit = () => {
+    const answers = buildAnswers(quiz, draft);
+    if (isEmptySubmission(quiz, answers)) {
+      setEmptyTried(true);
+      setWarnedFor(null);
+      return;
+    }
     if (unanswered > 0 && warnedFor !== unanswered) {
       setWarnedFor(unanswered);
       return;
     }
-    const answers = buildAnswers(quiz, draft);
     setAttempt({ submittedAt: new Date().toISOString(), answers });
     submit.mutate(answers, {
       onSuccess: (detail) => {
@@ -242,6 +256,7 @@ function LivePlayer({ quiz }: { quiz: PublicQuiz }) {
     setDraft({});
     setSubmission(null);
     setWarnedFor(null);
+    setEmptyTried(false);
     setAttempt(null);
     submit.reset();
     clearDraft(quiz.id);
@@ -298,7 +313,12 @@ function LivePlayer({ quiz }: { quiz: PublicQuiz }) {
       <Questions quiz={quiz} draft={draft} onChange={setValue} submission={null} />
 
       <div className={styles.actions}>
-        {unanswered > 0 && warnedFor === unanswered && (
+        {emptyTried && (
+          <p className={styles.warning} role="alert">
+            {EMPTY_SUBMISSION_MESSAGE}
+          </p>
+        )}
+        {!emptyTried && unanswered > 0 && warnedFor === unanswered && (
           <p className={styles.warning} role="alert">
             Nisi odgovorio na {unanswered} {unanswered === 1 ? "pitanje" : "pitanja"}. Klikni ponovo
             da predaš.

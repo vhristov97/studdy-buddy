@@ -6,8 +6,16 @@ export const DONT_KNOW = "?" as const;
 
 export const MAX_OPEN_ANSWER_LENGTH = 20000;
 
-/** Slack for floating-point noise when comparing against a tolerance (0.1 + 0.2 vs 0.3). */
-const TOLERANCE_EPSILON = 1e-9;
+export const EMPTY_SUBMISSION_MESSAGE = "Nijedno pitanje nije odgovoreno.";
+
+/**
+ * Whether a numeric answer is within tolerance of the key. The slack for floating-point noise
+ * (0.1 + 0.2 vs 0.3) scales with the magnitudes, so tiny answers are not swamped by it.
+ */
+function withinTolerance(value: number, answer: number, tolerance: number): boolean {
+  const slack = 4 * Number.EPSILON * Math.max(1e-300, Math.abs(value), Math.abs(answer));
+  return Math.abs(value - answer) <= tolerance + slack;
+}
 
 const DontKnow = z.literal(DONT_KNOW);
 
@@ -142,7 +150,7 @@ function scoreQuestion(q: Question, value: unknown, dontKnow: string[]): Questio
       if (missing || typeof value !== "number" || !Number.isFinite(value)) {
         return { ...base, status: "unanswered", score: 0 };
       }
-      return Math.abs(value - q.answer) <= q.tolerance + TOLERANCE_EPSILON
+      return withinTolerance(value, q.answer, q.tolerance)
         ? { ...base, status: "correct", score: 1 }
         : { ...base, status: "wrong", score: 0 };
     }
@@ -178,6 +186,24 @@ export function scoreQuiz(quiz: Quiz, answers: SubmissionAnswers): QuizScore {
 
 function isInt(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value);
+}
+
+/**
+ * True when no question has any value: every question missing, open answers blank, match
+ * objects without rows. "?" (Ne znam) counts as an answer.
+ */
+export function isEmptySubmission(
+  quiz: { questions: readonly { id: string }[] },
+  answers: SubmissionAnswers,
+): boolean {
+  return quiz.questions.every((q) => {
+    const value = Object.hasOwn(answers, q.id) ? answers[q.id] : undefined;
+    if (value === undefined) return true;
+    if (isDontKnow(value)) return false;
+    if (typeof value === "string") return value.trim() === "";
+    if (isMatchRecord(value)) return Object.keys(value).length === 0;
+    return false;
+  });
 }
 
 /** Shape errors of a submission against its quiz (an empty list means it can be scored). */

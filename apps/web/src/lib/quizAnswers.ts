@@ -4,7 +4,7 @@ import {
   type PublicQuiz,
   type SubmissionAnswers,
 } from "@studdy/shared";
-import { formatDecimal } from "./format";
+import { formatExact } from "./format";
 
 /** Free-text answer (num: the raw input text, open: the explanation) or "Ne znam". */
 export interface TextDraft {
@@ -125,7 +125,7 @@ export function draftFromAnswers(quiz: PublicQuiz, answers: SubmissionAnswers): 
         break;
       case "num":
         if (v === DONT_KNOW) draft[q.id] = { text: "", dontKnow: true };
-        else if (typeof v === "number") draft[q.id] = { text: formatDecimal(v), dontKnow: false };
+        else if (typeof v === "number") draft[q.id] = { text: formatExact(v), dontKnow: false };
         break;
       case "open":
         if (v === DONT_KNOW) draft[q.id] = { text: "", dontKnow: true };

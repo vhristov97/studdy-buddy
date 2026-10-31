@@ -82,6 +82,18 @@ export function formatDecimal(n: number): string {
   return String(Math.round(n * 1e6) / 1e6).replace(".", ",");
 }
 
+/**
+ * Exact decimal form of a number value with a comma, never rounded and never in exponent form
+ * (1e-7 -> "0,0000001"), for showing a submitted or correct numeric answer.
+ */
+export function formatExact(n: number): string {
+  const plain = String(n);
+  const text = /e/i.test(plain)
+    ? n.toLocaleString("en-US", { maximumSignificantDigits: 17, useGrouping: false })
+    : plain;
+  return text.replace(".", ",");
+}
+
 /** Date and time of an ISO timestamp in local time, e.g. "31. 10. 2026. 14:05". */
 export function formatDateTime(iso: string): string {
   const date = new Date(iso);
