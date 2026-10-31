@@ -53,8 +53,11 @@ export interface TelemetryGuardOptions {
  * memory (study materials), to app.jigjoy.ai when a key is found. Refuse to start if one is
  * configured in `env`, in `<cwd>/.env` (which the SDK also reads) or in `<repoRoot>/.env`
  * (checked explicitly so the guard does not depend on `config.ts` having loaded it) —
- * unless `MOZAIK_CLOUD_ENABLED` is truthy in `env` or either `.env`, which is the explicit
- * opt-in. Also points the SDK's paired-credentials lookup at `os.devNull`: it does
+ * unless `MOZAIK_CLOUD_ENABLED` is truthy, which is the explicit opt-in. The flag resolves
+ * like `process.loadEnvFile`: `env` wins over `<cwd>/.env`, which wins over
+ * `<repoRoot>/.env`, so an explicit `MOZAIK_CLOUD_ENABLED=false` in the environment
+ * overrides an opt-in in a `.env` file. Also points the SDK's paired-credentials lookup
+ * at `os.devNull`: it does
  * `JSON.parse(readFileSync(file))`, which throws on the empty read and is caught as "no
  * credentials". A file in `os.tmpdir()` would not do, since anyone can plant one there.
  */
@@ -66,10 +69,11 @@ export function assertTelemetryDisabled(options: TelemetryGuardOptions = {}): vo
     if (!fs.existsSync(envFile)) continue;
     parsedFiles.set(envFile, parseEnv(fs.readFileSync(envFile, "utf8")));
   }
-  const optedIn = [env, ...parsedFiles.values()].some((source) =>
-    TRUTHY.has(source[CLOUD_OPT_IN_KEY]?.trim().toLowerCase() ?? ""),
-  );
-  if (optedIn) return;
+  const flagValue =
+    env[CLOUD_OPT_IN_KEY] ??
+    parsedFiles.get(path.join(cwd, ".env"))?.[CLOUD_OPT_IN_KEY] ??
+    parsedFiles.get(path.join(repoRoot, ".env"))?.[CLOUD_OPT_IN_KEY];
+  if (TRUTHY.has(flagValue?.trim().toLowerCase() ?? "")) return;
   const found: string[] = [];
   for (const key of TELEMETRY_KEYS) {
     if (env[key]?.trim()) found.push(`${key} (environment)`);
