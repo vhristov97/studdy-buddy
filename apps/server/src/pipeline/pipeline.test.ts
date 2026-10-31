@@ -88,7 +88,9 @@ describe("pipeline", () => {
 
   beforeEach(() => {
     writer = vi.fn<FakeWriter>(async () => DRAFT);
-    t = createTestApp({ pipeline: { writeLesson: writer, progressIntervalMs: 500 } });
+    t = createTestApp({
+      pipeline: { writeLesson: writer, progressIntervalMs: 500, quizAutoStart: false },
+    });
     pipeline = t.pipeline!;
     events = [];
     t.coordinator!.subscribe((e) => events.push(e));

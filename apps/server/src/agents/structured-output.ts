@@ -59,8 +59,15 @@ function convert(node: JsonSchema): JsonSchema {
     out.additionalProperties = false;
   }
 
+  // Zod renders discriminated unions as `oneOf` (+ `discriminator`); the API only knows `anyOf`.
+  if (Array.isArray(out.oneOf)) {
+    out.anyOf = Array.isArray(out.anyOf) ? [...out.anyOf, ...out.oneOf] : out.oneOf;
+    delete out.oneOf;
+  }
+  delete out.discriminator;
+
   if (isSchema(out.items)) out.items = convert(out.items);
-  for (const key of ["prefixItems", "anyOf", "allOf", "oneOf"] as const) {
+  for (const key of ["prefixItems", "anyOf", "allOf"] as const) {
     if (key in out) out[key] = mapArray(out[key], convert);
   }
   for (const key of ["$defs", "definitions"] as const) {
@@ -72,7 +79,7 @@ function convert(node: JsonSchema): JsonSchema {
 /**
  * Converts a Zod schema to JSON Schema acceptable for Anthropic strict structured output:
  * no `$schema`, every object closed (`additionalProperties: false`) with all properties
- * required, and unsupported validation keywords removed.
+ * required, `oneOf` rewritten to `anyOf`, and unsupported validation keywords removed.
  *
  * Because every property is required, model optional fields as nullable
  * (`z.string().nullable()`), not `.optional()`. `z.record` is rejected. Numeric/string

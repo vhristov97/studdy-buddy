@@ -15,6 +15,11 @@ import {
   MATERIAL_KINDS,
   TOPIC_EVENT_SOURCES,
   TOPIC_RATINGS,
+  type QuizDraftFlag,
+  type QuizPlan,
+  type QuizReport,
+  type QuizReview,
+  type Question,
 } from "@studdy/shared";
 
 /** Placeholder table; real tables arrive in later tasks. */
@@ -97,6 +102,8 @@ export const generationJob = sqliteTable(
     /** 1 for the first run, +1 per retry after a failure. */
     attempt: integer("attempt").notNull(),
     error: text("error"),
+    /** Review cycle (from 1) of a quiz job; null otherwise. */
+    cycle: integer("cycle"),
     /** The failed job this one retries. */
     parentJobId: integer("parent_job_id").references((): AnySQLiteColumn => generationJob.id, {
       onDelete: "set null",
@@ -158,3 +165,54 @@ export const topicEvent = sqliteTable(
   },
   (table) => [index("topic_event_topic_id_idx").on(table.topicId)],
 );
+
+/** Immutable once inserted. The full questions (answers included) stay on the server for now. */
+export const quiz = sqliteTable(
+  "quiz",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    courseId: integer("course_id")
+      .notNull()
+      .references(() => course.id, { onDelete: "cascade" }),
+    /** Null for cumulative (K) quizzes, which belong to no single class. */
+    classId: integer("class_id").references(() => classTable.id, { onDelete: "cascade" }),
+    code: text("code").notNull(),
+    title: text("title").notNull(),
+    subtitle: text("subtitle").notNull(),
+    chipsJson: text("chips_json", { mode: "json" }).$type<string[]>().notNull(),
+    questionsJson: text("questions_json", { mode: "json" }).$type<Question[]>().notNull(),
+    jobId: integer("job_id").references(() => generationJob.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("quiz_course_id_code_unique").on(table.courseId, table.code),
+    index("quiz_class_id_idx").on(table.classId),
+  ],
+);
+
+/** One entry per review cycle of a quiz job. */
+export interface QuizPlanLogEntry {
+  cycle: number;
+  report: QuizReport;
+  /** Null while the review runs, or when it failed. */
+  review: QuizReview | null;
+  flags: QuizDraftFlag[];
+}
+
+/** The planner's answer key and the build/review history. Never exposed by any route. */
+export const quizPlan = sqliteTable("quiz_plan", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  jobId: integer("job_id")
+    .notNull()
+    .unique()
+    .references(() => generationJob.id, { onDelete: "cascade" }),
+  classId: integer("class_id")
+    .notNull()
+    .references(() => classTable.id, { onDelete: "cascade" }),
+  planJson: text("plan_json", { mode: "json" }).$type<QuizPlan>().notNull(),
+  /** The latest builder draft. */
+  draftJson: text("draft_json", { mode: "json" }).$type<unknown>(),
+  logJson: text("log_json", { mode: "json" }).$type<QuizPlanLogEntry[]>().notNull(),
+  quizId: integer("quiz_id").references(() => quiz.id, { onDelete: "set null" }),
+  createdAt: createdAt(),
+});

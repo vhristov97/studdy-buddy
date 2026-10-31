@@ -14,6 +14,7 @@ export function toGenerationJob(row: JobRow): GenerationJob {
     status: row.status,
     attempt: row.attempt,
     error: row.error,
+    cycle: row.cycle,
     createdAt: row.createdAt.toISOString(),
     finishedAt: row.finishedAt?.toISOString() ?? null,
   };

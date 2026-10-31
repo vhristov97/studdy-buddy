@@ -20,6 +20,7 @@ export const countClasses = (n: number) =>
 export const countMaterials = (n: number) =>
   `${n} ${plural(n, "materijal", "materijala", "materijala")}`;
 export const countNotes = (n: number) => `${n} ${plural(n, "beleška", "beleške", "beležaka")}`;
+export const countQuestions = (n: number) => `${n} ${plural(n, "pitanje", "pitanja", "pitanja")}`;
 export const countPages = (n: number) => `${n} ${plural(n, "strana", "strane", "strana")}`;
 
 /** "na svako predavanje" / "na svaka 3 predavanja" / "na svakih 5 predavanja". */
@@ -68,4 +69,10 @@ export function formatDuration(ms: number): string {
   if (total < 60) return `${total} s`;
   const minutes = Math.floor(total / 60);
   return `${minutes} min ${String(total % 60).padStart(2, "0")} s`;
+}
+
+/** Serbian numeric date of an ISO timestamp in local time, e.g. "31. 10. 2026.". */
+export function formatDate(iso: string): string {
+  const date = new Date(iso);
+  return `${date.getDate()}. ${date.getMonth() + 1}. ${date.getFullYear()}.`;
 }

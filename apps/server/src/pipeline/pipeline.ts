@@ -1,4 +1,3 @@
-import type { SemanticEvent } from "@mozaik-ai/core";
 import { and, asc, desc, eq, isNotNull } from "drizzle-orm";
 import { MISCONCEPTION_OUTCOME, type GenerationJob, type LessonDraft } from "@studdy/shared";
 import {
@@ -20,15 +19,11 @@ import {
   topicEvent,
 } from "../db/schema.js";
 import { ConflictError } from "../repositories/conflict.js";
-import { getClassStatus, getJob } from "../repositories/lessons.js";
+import { getJob } from "../repositories/lessons.js";
 import { notFound } from "../routes/errors.js";
-import {
-  DOMAIN_EVENTS,
-  type GenerateRequestedPayload,
-  type JobProgressPayload,
-  type JobUpdatedPayload,
-  type LessonReadyPayload,
-} from "./events.js";
+import { createJobEmitter, createProgressReporter, truncate } from "./common.js";
+import { registerQuizBranch, type QuizAgents } from "./quiz-branch.js";
+import { DOMAIN_EVENTS, type GenerateRequestedPayload, type LessonReadyPayload } from "./events.js";
 
 export type WriteLesson = (
   input: LessonWriterInput,
@@ -41,6 +36,10 @@ export interface PipelineOptions {
   logger: CoordinatorLogger;
   /** Replaceable in tests. */
   writeLesson?: WriteLesson;
+  /** Replaceable in tests: the planner, builder session and reviewer of the quiz branch. */
+  quizAgents?: Partial<QuizAgents>;
+  /** Off: no quiz job starts on `lesson.ready` (lesson-only tests). Default on. */
+  quizAutoStart?: boolean;
   /** Minimum gap between two progress events of a job. */
   progressIntervalMs?: number;
 }
@@ -48,26 +47,21 @@ export interface PipelineOptions {
 export interface Pipeline {
   /** Starts the lesson stage for a `draft` or `failed` class. Throws 404/409 `ApiError`s. */
   requestGeneration(classId: number): GenerationJob;
-  /** For startup: no job survives a restart, so mark running jobs and generating classes failed. */
+  /**
+   * Starts, or re-plans and rebuilds, the quiz of a `ready` class with no released quiz whose
+   * latest quiz job failed or is absent (the quiz branch itself starts on `lesson.ready`). Throws
+   * 404/409 `ApiError`s.
+   */
+  requestQuizRegeneration(classId: number): GenerationJob;
+  /**
+   * For startup: no job survives a restart, so mark running jobs and generating classes failed.
+   * A `ready` class stays `ready` when only its quiz job was running.
+   */
   recoverInterruptedJobs(): void;
 }
 
 const LESSON_STAGE = "lesson-writer";
-const MAX_ERROR_LENGTH = 500;
 export const RESTART_ERROR = "Server restarted while generating";
-
-/** Characters of model output carried by one `inference.stream` event (raw Anthropic stream event). */
-function streamedChars(event: SemanticEvent): number {
-  if (event.type !== "inference.stream") return 0;
-  const payload = event.payload as { type?: unknown; delta?: unknown } | undefined;
-  if (payload?.type !== "content_block_delta" || typeof payload.delta !== "object") return 0;
-  const delta = payload.delta as { type?: unknown; text?: unknown; partial_json?: unknown };
-  if (delta.type === "text_delta" && typeof delta.text === "string") return delta.text.length;
-  if (delta.type === "input_json_delta" && typeof delta.partial_json === "string") {
-    return delta.partial_json.length;
-  }
-  return 0;
-}
 
 function describeError(error: unknown): string {
   const message =
@@ -76,7 +70,7 @@ function describeError(error: unknown): string {
       : error instanceof Error
         ? error.message
         : String(error);
-  return message.length > MAX_ERROR_LENGTH ? `${message.slice(0, MAX_ERROR_LENGTH)}...` : message;
+  return truncate(message);
 }
 
 export function createPipeline({
@@ -84,16 +78,12 @@ export function createPipeline({
   coordinator,
   logger,
   writeLesson = realWriteLesson,
+  quizAgents,
+  quizAutoStart = true,
   progressIntervalMs = 500,
 }: PipelineOptions): Pipeline {
-  function emitJob(jobId: number): void {
-    const job = getJob(db, jobId);
-    if (!job) return; // the class was deleted meanwhile
-    const classStatus = getClassStatus(db, job.classId);
-    if (!classStatus) return;
-    const payload: JobUpdatedPayload = { type: "job", job, classStatus };
-    coordinator.emit(DOMAIN_EVENTS.JOB_UPDATED, payload);
-  }
+  const emitJob = createJobEmitter(db, coordinator);
+  const progressFor = createProgressReporter(coordinator, progressIntervalMs);
 
   function requestGeneration(classId: number): GenerationJob {
     const jobId = db.transaction((tx) => {
@@ -257,25 +247,8 @@ export function createPipeline({
     let lessonId: number;
     try {
       const input = loadLessonInput(classId);
-      let outputChars = 0;
-      let lastProgressAt = 0;
       const draft = await writeLesson(input, {
-        onEvent: (event) => {
-          const chars = streamedChars(event);
-          if (chars === 0) return;
-          outputChars += chars;
-          const now = Date.now();
-          if (now - lastProgressAt < progressIntervalMs) return;
-          lastProgressAt = now;
-          const payload: JobProgressPayload = {
-            type: "progress",
-            classId,
-            jobId,
-            stage: LESSON_STAGE,
-            outputChars,
-          };
-          coordinator.emit(DOMAIN_EVENTS.JOB_PROGRESS, payload);
-        },
+        onEvent: progressFor({ classId, jobId, stage: LESSON_STAGE }),
       });
       lessonId = persistLesson(jobId, classId, draft);
     } catch (error) {
@@ -290,6 +263,14 @@ export function createPipeline({
   }
 
   coordinator.on<GenerateRequestedPayload>(DOMAIN_EVENTS.GENERATE_REQUESTED, runLessonJob);
+  const quizBranch = registerQuizBranch({
+    db,
+    coordinator,
+    logger,
+    ...(quizAgents && { agents: quizAgents }),
+    progressIntervalMs,
+    autoStart: quizAutoStart,
+  });
 
   function recoverInterruptedJobs(): void {
     db.transaction((tx) => {
@@ -304,5 +285,9 @@ export function createPipeline({
     });
   }
 
-  return { requestGeneration, recoverInterruptedJobs };
+  return {
+    requestGeneration,
+    requestQuizRegeneration: quizBranch.requestRegeneration,
+    recoverInterruptedJobs,
+  };
 }

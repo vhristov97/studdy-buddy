@@ -157,4 +157,45 @@ describe("CoursePage", () => {
     expect(await screen.findByRole("heading", { name: "Ne postoji" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /kurseve/ })).toHaveAttribute("href", "/");
   });
+
+  it("lists the quiz library newest first, and an empty state without quizzes", async () => {
+    const quiz = (id: number, code: string, over = {}) => ({
+      id,
+      courseId: 1,
+      classId: 5,
+      code,
+      title: `Kviz ${code}`,
+      subtitle: "Predavanje 1",
+      chips: [],
+      questionCount: 20,
+      createdAt: "2026-03-05T12:00:00.000Z",
+      ...over,
+    });
+    mockApi({
+      ...courseRoutes(),
+      "GET /api/courses/1/quizzes": () => [
+        quiz(2, "P02", { chips: ["Ponavljanje", "Teže"], questionCount: 8 }),
+        quiz(1, "P01"),
+      ],
+    });
+    renderAt("/kursevi/1");
+    expect(await screen.findByRole("heading", { level: 2, name: "Kvizovi" })).toBeInTheDocument();
+    const items = (await screen.findAllByText(/^Kviz P0\d$/)).map((el) => el.closest("li")!);
+    expect(items.map((li) => within(li).getByText(/^P0\d$/).textContent)).toEqual(["P02", "P01"]);
+    expect(within(items[0]!).getByText("Ponavljanje")).toBeInTheDocument();
+    expect(within(items[0]!).getByText("Teže")).toBeInTheDocument();
+    expect(within(items[0]!).getByText("8 pitanja · 5. 3. 2026.")).toBeInTheDocument();
+    expect(within(items[1]!).getByText("20 pitanja · 5. 3. 2026.")).toBeInTheDocument();
+    expect(within(items[0]!).queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("shows an empty state when the course has no quizzes", async () => {
+    mockApi({ ...courseRoutes(), "GET /api/courses/1/quizzes": () => [] });
+    renderAt("/kursevi/1");
+    expect(
+      await screen.findByText(
+        "Još nema kvizova. Kviz se pravi automatski posle objedinjenih beleški.",
+      ),
+    ).toBeInTheDocument();
+  });
 });

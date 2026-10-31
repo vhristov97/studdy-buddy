@@ -64,7 +64,12 @@ function LessonView({ detail }: { detail: ClassDetail }) {
       {detail.status !== "draft" && (
         <details className={styles.pipeline} open={detail.status !== "ready"}>
           <summary>Tok generisanja</summary>
-          <PipelinePanel key={detail.id} classId={detail.id} classStatus={detail.status} />
+          <PipelinePanel
+            key={detail.id}
+            classId={detail.id}
+            courseId={detail.courseId}
+            classStatus={detail.status}
+          />
         </details>
       )}
 

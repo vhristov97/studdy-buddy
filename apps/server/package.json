@@ -23,6 +23,7 @@
     "smoke:agent": "tsx scripts/smoke-agent.ts",
     "extract": "tsx scripts/extract.ts",
     "lesson:try": "tsx scripts/try-lesson.ts",
+    "quiz:try": "tsx scripts/try-quiz.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts"
   },

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { Quiz, QuizPlan } from "@studdy/shared";
 import { z } from "zod";
 import { toStructuredOutputSchema } from "./structured-output.js";
 
@@ -77,5 +78,61 @@ describe("toStructuredOutputSchema", () => {
     expect(() =>
       toStructuredOutputSchema(z.object({ m: z.record(z.string(), z.string()) })),
     ).toThrow(/record/);
+  });
+
+  it("renders discriminated unions as anyOf without oneOf or discriminator", () => {
+    const out = toStructuredOutputSchema(
+      z.object({
+        item: z.discriminatedUnion("kind", [
+          z.object({ kind: z.literal("a"), x: z.number().min(0) }),
+          z.object({ kind: z.literal("b"), y: z.string().nullable() }),
+        ]),
+      }),
+    ) as Json;
+    expect(out.properties.item.oneOf).toBeUndefined();
+    expect(out.properties.item.discriminator).toBeUndefined();
+    const [a, b] = out.properties.item.anyOf;
+    expect(a.required).toEqual(["kind", "x"]);
+    expect(a.properties.kind).toEqual({ type: "string", const: "a" });
+    expect(a.properties.x.minimum).toBeUndefined();
+    expect(b.additionalProperties).toBe(false);
+  });
+});
+
+describe("toStructuredOutputSchema for quiz schemas", () => {
+  /** Walks the schema and calls `visit` on every object node. */
+  function walk(node: unknown, visit: (n: Json) => void) {
+    if (Array.isArray(node)) return node.forEach((n) => walk(n, visit));
+    if (typeof node !== "object" || node === null) return;
+    visit(node);
+    Object.values(node).forEach((n) => walk(n, visit));
+  }
+
+  it.each([
+    ["Quiz", Quiz],
+    ["QuizPlan", QuizPlan],
+  ])("converts %s to a strict, closed schema without oneOf", (_name, schema) => {
+    const json = toStructuredOutputSchema(schema);
+    walk(json, (n) => {
+      expect(n.oneOf).toBeUndefined();
+      expect(n.discriminator).toBeUndefined();
+      expect(n.$ref).toBeUndefined();
+      if (n.type === "object") {
+        expect(n.additionalProperties).toBe(false);
+        expect(n.required).toEqual(Object.keys(n.properties));
+      }
+    });
+  });
+
+  it("renders Question as an anyOf of the four closed question objects", () => {
+    const json = toStructuredOutputSchema(Quiz) as Json;
+    const variants = json.properties.questions.items.anyOf;
+    expect(variants.map((v: Json) => v.properties.type.const)).toEqual([
+      "mc",
+      "num",
+      "match",
+      "open",
+    ]);
+    expect(variants[1].properties.unit.anyOf).toEqual([{ type: "string" }, { type: "null" }]);
   });
 });

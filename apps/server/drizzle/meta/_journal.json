@@ -29,6 +29,13 @@
       "when": 1793409127032,
       "tag": "0003_famous_zombie",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1793417152552,
+      "tag": "0004_chubby_leader",
+      "breakpoints": true
     }
   ]
 }

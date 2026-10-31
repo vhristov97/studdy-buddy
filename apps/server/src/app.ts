@@ -11,6 +11,7 @@ import { errorBody, registerErrorHandler } from "./routes/errors.js";
 import { generationRoutes } from "./routes/generation.js";
 import { healthRoutes } from "./routes/health.js";
 import { materialRoutes } from "./routes/materials.js";
+import { quizRoutes } from "./routes/quizzes.js";
 import type { Pipeline } from "./pipeline/pipeline.js";
 
 export interface AppDeps {
@@ -40,6 +41,7 @@ export function buildApp({
   app.register(healthRoutes, { db });
   app.register(courseRoutes, { db, dataDir: config.DATA_DIR });
   app.register(materialRoutes, { db, dataDir: config.DATA_DIR });
+  app.register(quizRoutes, { db });
   app.register(generationRoutes, {
     db,
     ...(pipeline && { pipeline }),

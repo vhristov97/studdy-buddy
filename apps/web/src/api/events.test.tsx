@@ -81,6 +81,36 @@ describe("useClassEvents", () => {
     expect(source.closed).toBe(true);
   });
 
+  it("stays open while a quiz job runs on a ready class, even if `enabled` lapses", () => {
+    vi.stubGlobal("EventSource", FakeEventSource);
+    const { hook } = setup();
+    const source = FakeEventSource.instances[0]!;
+    act(() => {
+      source.emit(
+        "job",
+        jobEvent({ status: "succeeded", finishedAt: "2026-01-01T10:02:00.000Z" }, "ready"),
+      );
+      source.emit(
+        "job",
+        jobEvent({ id: 2, kind: "quiz", stage: "quiz-reviewer", cycle: 1 }, "ready"),
+      );
+    });
+    hook.rerender({ on: false });
+    expect(source.closed).toBe(false);
+    expect(FakeEventSource.instances).toHaveLength(1);
+
+    act(() =>
+      source.emit(
+        "job",
+        jobEvent(
+          { id: 2, kind: "quiz", status: "succeeded", finishedAt: "2026-01-01T10:03:00.000Z" },
+          "ready",
+        ),
+      ),
+    );
+    expect(source.closed).toBe(true);
+  });
+
   it("tracks jobs and progress", () => {
     vi.stubGlobal("EventSource", FakeEventSource);
     const { hook } = setup();

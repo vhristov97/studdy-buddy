@@ -121,7 +121,12 @@ function ClassView({ detail }: { detail: ClassDetail }) {
       </section>
 
       <section className={styles.generate} aria-label="Generisanje">
-        <PipelinePanel key={detail.id} classId={detail.id} classStatus={detail.status} />
+        <PipelinePanel
+          key={detail.id}
+          classId={detail.id}
+          courseId={detail.courseId}
+          classStatus={detail.status}
+        />
         {detail.status === "ready" ? (
           <Link to={`/predavanja/${detail.id}/lekcija`} className={styles.lessonLink}>
             Otvori objedinjene beleške
