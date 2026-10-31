@@ -596,6 +596,210 @@ describe("QuizPage player", () => {
     });
   });
 
+  describe("grading", () => {
+    const graded = (): SubmissionDetail =>
+      detail({
+        openPending: 2,
+        grading: {
+          status: "done",
+          error: null,
+          result: {
+            openGrades: [
+              {
+                questionId: "q5",
+                score: 0.4,
+                right: "Izolacija procesa.",
+                missing: "Deli jezgro.",
+              },
+              { questionId: "q6", score: 1, right: "Šablon.", missing: "Ništa bitno." },
+            ],
+            items: [
+              {
+                questionId: "q2",
+                rowIndex: null,
+                topic: "Mreže",
+                classification: "misconception",
+                studentAnswer: "UDP",
+                misconception: "UDP garantuje isporuku",
+                likelyCause: "Meša ga sa TCP-om",
+                keyFact: "TCP potvrđuje prijem.",
+              },
+              {
+                questionId: "q3",
+                rowIndex: null,
+                topic: "Mreže",
+                classification: "gap",
+                studentAnswer: null,
+                misconception: null,
+                likelyCause: null,
+                keyFact: "Tipično 20 ms.",
+              },
+              {
+                questionId: "q4",
+                rowIndex: 1,
+                topic: "Kontejneri",
+                classification: "misconception",
+                studentAnswer: "Kontejner",
+                misconception: "Kubernetes je kontejner",
+                likelyCause: null,
+                keyFact: "Kubernetes je orkestrator.",
+              },
+            ],
+            correctFixes: [{ topic: "Mreže", misconception: "TCP je nepouzdan" }],
+            topicUpdates: [],
+            writeupMd: "## Rezime\n\nDobar napredak u **mrežama**.",
+            openScore: 1.4,
+            totalScore: 3.9,
+            gradedAt: "2026-01-03T14:10:00.000Z",
+          },
+        },
+      });
+
+    it("shows a progress line while grading runs and no results yet", async () => {
+      mockApi(
+        routes({
+          "GET /api/submissions/9": () =>
+            detail({ grading: { status: "running", error: null, result: null } }),
+        }),
+      );
+      renderAt("/kvizovi/1/predaje/9");
+      expect(
+        await screen.findByText("Ocenjivanje otvorenih pitanja je u toku…"),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/^Ukupno:/)).not.toBeInTheDocument();
+      expect(screen.queryByText("Izveštaj")).not.toBeInTheDocument();
+    });
+
+    it("polls every 5 seconds until the grading is done", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        let calls = 0;
+        mockApi(
+          routes({
+            "GET /api/submissions/9": () => {
+              calls += 1;
+              return calls === 1
+                ? detail({ grading: { status: "running", error: null, result: null } })
+                : graded();
+            },
+          }),
+        );
+        renderAt("/kvizovi/1/predaje/9");
+        await screen.findByText("Ocenjivanje otvorenih pitanja je u toku…");
+        await vi.advanceTimersByTimeAsync(5100);
+        expect(await screen.findByText("Ukupno: 3,9 / 6")).toBeInTheDocument();
+        expect(
+          screen.queryByText("Ocenjivanje otvorenih pitanja je u toku…"),
+        ).not.toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("counts an open question without a grade in the maximum", async () => {
+      const base = graded();
+      const result = base.grading.result!;
+      mockApi(
+        routes({
+          "GET /api/submissions/9": () => ({
+            ...base,
+            grading: {
+              ...base.grading,
+              result: { ...result, openGrades: result.openGrades.slice(0, 1) },
+            },
+          }),
+        }),
+      );
+      renderAt("/kvizovi/1/predaje/9");
+      expect(await screen.findByText("Ukupno: 3,9 / 6")).toBeInTheDocument();
+    });
+
+    it("shows the error of a failed grading and grades again on click", async () => {
+      const { requests } = mockApi(
+        routes({
+          "GET /api/submissions/9": () =>
+            detail({ grading: { status: "failed", error: "Model nije odgovorio", result: null } }),
+          "POST /api/submissions/9/grade": () => json({ id: 3 }, 202),
+        }),
+      );
+      const user = userEvent.setup();
+      renderAt("/kvizovi/1/predaje/9");
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "Ocenjivanje nije uspelo: Model nije odgovorio",
+      );
+      await user.click(screen.getByRole("button", { name: "Oceni ponovo" }));
+      expect(
+        requests.some((r) => r.method === "POST" && r.path === "/api/submissions/9/grade"),
+      ).toBe(true);
+    });
+
+    it("shows a refused regrade inline", async () => {
+      mockApi(
+        routes({
+          "GET /api/submissions/9": () =>
+            detail({ grading: { status: "failed", error: "x", result: null } }),
+          "POST /api/submissions/9/grade": () =>
+            apiError(409, "conflict", "Ocenjivanje već traje."),
+        }),
+      );
+      const user = userEvent.setup();
+      renderAt("/kvizovi/1/predaje/9");
+      await user.click(await screen.findByRole("button", { name: "Oceni ponovo" }));
+      expect(await screen.findByText("Ocenjivanje već traje.")).toBeInTheDocument();
+    });
+
+    it("shows the total, the open grades, the item notes and the fixed misconceptions", async () => {
+      mockApi(routes({ "GET /api/submissions/9": () => graded() }));
+      renderAt("/kvizovi/1/predaje/9");
+      expect(await screen.findByText("Ukupno: 3,9 / 6")).toBeInTheDocument();
+      expect(screen.queryByText(/čeka ocenjivanje/)).not.toBeInTheDocument();
+
+      const q5 = within(card(/pojam kontejnera/));
+      expect(q5.getByText("Ocena: 0,4 / 1")).toBeInTheDocument();
+      expect(q5.getByText("Izolacija procesa.")).toBeInTheDocument();
+      expect(q5.getByText("Deli jezgro.")).toBeInTheDocument();
+      expect(q5.getByText("Tačno:")).toBeInTheDocument();
+      expect(q5.getByText("Nedostaje:")).toBeInTheDocument();
+      expect(within(card(/pojam slike/)).getByText("Ocena: 1 / 1")).toBeInTheDocument();
+
+      const q2 = within(card(/Koji protokol/));
+      expect(q2.getByText("UDP garantuje isporuku")).toBeInTheDocument();
+      expect(q2.getByText("Zabluda:")).toBeInTheDocument();
+      expect(q2.getByText("Meša ga sa TCP-om")).toBeInTheDocument();
+      expect(q2.getByText("Verovatan uzrok:")).toBeInTheDocument();
+      expect(within(card(/latencija/)).getByText("Ne znam — prvo učimo ovo.")).toBeInTheDocument();
+      const q4 = within(card(/Poveži alat/));
+      expect(q4.getByText("Kubernetes:")).toBeInTheDocument();
+      expect(q4.getByText("Kubernetes je kontejner")).toBeInTheDocument();
+      expect(q4.queryByText("Verovatan uzrok:")).not.toBeInTheDocument();
+
+      expect(screen.getByText("Ispravljene zablude iz beleški")).toBeInTheDocument();
+      expect(screen.getByText("TCP je nepouzdan")).toBeInTheDocument();
+    });
+
+    it("renders the write-up in a collapsed details element", async () => {
+      mockApi(routes({ "GET /api/submissions/9": () => graded() }));
+      renderAt("/kvizovi/1/predaje/9");
+      const summary = await screen.findByText("Izveštaj");
+      const details = summary.closest("details")!;
+      expect(details).not.toHaveAttribute("open");
+      expect(within(details).getByRole("heading", { name: "Rezime" })).toBeInTheDocument();
+      expect(within(details).getByText("mrežama").tagName).toBe("STRONG");
+    });
+
+    it("shows the status line right after submitting", async () => {
+      const { user } = await openPlayer({
+        "POST /api/quizzes/1/submissions": () => json(detail(), 201),
+      });
+      await user.click(within(card(/jedan plus jedan/)).getByRole("radio", { name: "Dva" }));
+      await user.click(screen.getByRole("button", { name: "Predaj kviz" }));
+      await user.click(screen.getByRole("button", { name: "Predaj kviz" }));
+      expect(
+        await screen.findByText("Ocenjivanje otvorenih pitanja je u toku…"),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("shows a friendly message for a missing quiz", async () => {
     mockApi({});
     renderAt("/kvizovi/99");

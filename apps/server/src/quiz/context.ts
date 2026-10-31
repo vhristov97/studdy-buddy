@@ -2,6 +2,7 @@ import { and, asc, eq, lt } from "drizzle-orm";
 import { lessonQuizCode, type LessonView, type TopicRating } from "@studdy/shared";
 import type { Db } from "../db/client.js";
 import { classTable, course } from "../db/schema.js";
+import { loadBacklog, loadObservations } from "../grading/context.js";
 import { getLessonView } from "../repositories/lessons.js";
 
 export interface QuizTopicHistoryEntry {
@@ -56,9 +57,9 @@ export interface QuizContext {
    * first; the source material for repeat questions. Limited to the most recent classes.
    */
   earlierLessons: EarlierLesson[];
-  /** Topics left out of earlier quizzes. Empty until the backlog table arrives (M6). */
+  /** The course's unresolved backlog items (the planner picks the ones due in this class's cumulative quiz). */
   backlog: BacklogItem[];
-  /** Learner observations. Empty until M6. */
+  /** Cross-course learner observations, oldest first. */
   observations: string[];
 }
 
@@ -148,8 +149,8 @@ export function loadQuizContext(db: Db, classId: number): QuizContext {
     topics: lesson.topics.map(toTopicInput),
     earlierTopics,
     earlierLessons,
-    backlog: [],
-    observations: [],
+    backlog: loadBacklog(db, row.cls.courseId),
+    observations: loadObservations(db),
   };
 }
 

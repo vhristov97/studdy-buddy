@@ -14,6 +14,17 @@ const RATINGS: Record<TopicRating, { label: string; className: string }> = {
   "✓": { label: "Dobro", className: styles.good! },
 };
 
+/** The rating symbol with its label (visible on phones, read by screen readers elsewhere). */
+export function RatingChip({ rating }: { rating: TopicRating }) {
+  const info = RATINGS[rating];
+  return (
+    <span className={`${styles.rating} ${info.className}`} title={info.label}>
+      <span aria-hidden="true">{rating}</span>
+      <span className={styles.ratingLabel}>{info.label}</span>
+    </span>
+  );
+}
+
 /** Unique quiz codes in the order they were first taken. */
 function testedRefs(events: readonly TopicEvent[]): string[] {
   const refs = events.flatMap((event) => (event.source === "quiz" && event.ref ? [event.ref] : []));
@@ -77,7 +88,6 @@ export function TrackingTable({ topics }: { topics: readonly TopicView[] }) {
         {[...topics]
           .sort((a, b) => a.position - b.position)
           .map((topic) => {
-            const rating = RATINGS[topic.rating];
             const refs = testedRefs(topic.events);
             const notes = noteList(topic);
             const noNotes = !topic.deferred && notes.length === 0;
@@ -87,10 +97,7 @@ export function TrackingTable({ topics }: { topics: readonly TopicView[] }) {
                   {topic.name}
                 </th>
                 <td data-label="Ocena" className={styles.ratingCell}>
-                  <span className={`${styles.rating} ${rating.className}`} title={rating.label}>
-                    <span aria-hidden="true">{topic.rating}</span>
-                    <span className={styles.ratingLabel}>{rating.label}</span>
-                  </span>
+                  <RatingChip rating={topic.rating} />
                 </td>
                 {/* Empty cells stay on desktop as a dash; phone cards hide them (data-empty). */}
                 <td data-label="Testirano" data-empty={refs.length === 0 || undefined}>

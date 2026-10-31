@@ -1,9 +1,18 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { migrate, openDatabase, type DatabaseHandle } from "../db/client.js";
-import { classTable, course, lesson, topic, topicEvent } from "../db/schema.js";
+import {
+  backlogItem,
+  classTable,
+  course,
+  learnerObservation,
+  lesson,
+  topic,
+  topicEvent,
+} from "../db/schema.js";
 import { loadQuizContext, notesMisconceptions } from "./context.js";
 
 let dir: string;
@@ -149,8 +158,37 @@ describe("loadQuizContext", () => {
         correction: "Ispravno B",
       },
     ]);
-    expect(ctx.backlog).toEqual([]);
-    expect(ctx.observations).toEqual([]);
+  });
+
+  it("loads the unresolved backlog of the course and the observations", () => {
+    const { db } = handle;
+    const c = db.select().from(course).where(eq(course.name, "Kurs")).get()!;
+    const slaba = db.select().from(topic).where(eq(topic.name, "Slaba tema")).get()!;
+    const druga = db.select().from(topic).where(eq(topic.name, "Druga tema")).get()!;
+    db.insert(backlogItem)
+      .values([
+        { courseId: c.id, topicId: slaba.id, dueQuiz: "K1", reason: "weak" },
+        { courseId: c.id, topicId: druga.id, dueQuiz: "K2", reason: "gap" },
+        {
+          courseId: c.id,
+          topicId: druga.id,
+          dueQuiz: "K1",
+          reason: "left_out",
+          resolvedAt: new Date("2026-01-01T00:00:00.000Z"),
+        },
+      ])
+      .run();
+    db.insert(learnerObservation)
+      .values([{ text: "Prva" }, { text: "Druga" }])
+      .run();
+    const ctx = loadQuizContext(db, class2);
+    expect(ctx.backlog).toEqual([
+      { topic: "Slaba tema", dueQuiz: "K1", reason: "weak" },
+      { topic: "Druga tema", dueQuiz: "K2", reason: "gap" },
+    ]);
+    expect(ctx.observations).toEqual(["Prva", "Druga"]);
+    db.delete(backlogItem).run();
+    db.delete(learnerObservation).run();
   });
 
   it("lists only weak or misconception-bearing, non-deferred topics of earlier classes", () => {

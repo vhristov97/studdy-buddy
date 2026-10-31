@@ -43,17 +43,29 @@ export function mergeJobs(
 }
 
 export interface JobGroup {
+  /** Unique per group: the kind, plus the submission for grading (one group per graded submission). */
+  key: string;
   kind: JobKind;
   latest: GenerationJob;
   /** Older attempts, newest first. */
   earlier: GenerationJob[];
 }
 
-/** One group per kind, in pipeline order (lesson first). */
+/**
+ * One group per kind, in pipeline order (lesson first). Grading is one group per submission, the
+ * newest submission first.
+ */
 export function groupJobs(jobs: readonly GenerationJob[]): JobGroup[] {
-  const byKind = new Map<JobKind, GenerationJob[]>();
-  for (const job of jobs) byKind.set(job.kind, [...(byKind.get(job.kind) ?? []), job]);
-  return [...byKind.entries()]
-    .map(([kind, list]) => ({ kind, latest: list[0]!, earlier: list.slice(1) }))
-    .sort((a, b) => JOB_KIND_ORDER.indexOf(a.kind) - JOB_KIND_ORDER.indexOf(b.kind));
+  const byKey = new Map<string, GenerationJob[]>();
+  for (const job of jobs) {
+    const key = job.submissionId === null ? job.kind : `${job.kind}-${job.submissionId}`;
+    byKey.set(key, [...(byKey.get(key) ?? []), job]);
+  }
+  return [...byKey.entries()]
+    .map(([key, list]) => ({ key, kind: list[0]!.kind, latest: list[0]!, earlier: list.slice(1) }))
+    .sort(
+      (a, b) =>
+        JOB_KIND_ORDER.indexOf(a.kind) - JOB_KIND_ORDER.indexOf(b.kind) ||
+        b.latest.id - a.latest.id,
+    );
 }

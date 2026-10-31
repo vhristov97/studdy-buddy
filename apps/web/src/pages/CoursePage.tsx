@@ -56,6 +56,9 @@ function CourseView({ course }: { course: CourseDetail }) {
       <header className={styles.header}>
         <h1 className={styles.title}>{course.name}</h1>
         <div className={styles.actions}>
+          <Link to={`/kursevi/${course.id}/napredak`} className={styles.progressLink}>
+            Napredak
+          </Link>
           <Button onClick={() => setEditing(true)}>Izmeni kurs</Button>
           <Button variant="danger" onClick={() => setDeleting(true)}>
             Obriši kurs
