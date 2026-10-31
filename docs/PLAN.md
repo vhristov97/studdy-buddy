@@ -95,7 +95,7 @@ Dependencies: M0 → M1 → M2 → M3, then M4 ∥ M7 (M5 can start once the M4 
 ### M1: Agent infrastructure
 - [x] M1.1 `runtime.ts` (init + telemetry guard), `ResilientRunner`, `FakeRunner`, unhandledRejection safety net.
 - [x] M1.2 Generic `runStage` helper (create agent → runLoop with structured output → resolve on its own `model.answer` / reject on its `stage.failed` or watchdog timeout → parse + Zod-validate → leave), plus a multi-turn variant for builder fix cycles, and a Coordinator skeleton that reacts to domain events. Unit tests with `FakeRunner` (success, invalid JSON, schema mismatch, API failure, timeout, concurrent stages).
-- [ ] M1.3 Real-API smoke script (`npm run smoke:agent`) with a trivial structured-output agent on both models. Opus runs it once to confirm 4.1.0 + Anthropic structured output work end to end.
+- [x] M1.3 Real-API smoke script (`npm run smoke:agent`) with a trivial structured-output agent on both models. Opus runs it once to confirm 4.1.0 + Anthropic structured output work end to end.
 
 ### M2: Courses, classes, materials
 - [ ] M2.1 Schema + CRUD API for courses (name, persona?, assessment format?, review cadence?) and classes.
