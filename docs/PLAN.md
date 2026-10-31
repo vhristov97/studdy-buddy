@@ -141,9 +141,18 @@ Opus checks every task with `npm run typecheck && npm run lint && npm test`, rea
 
 State and context a fresh session needs. Keep this section current at every milestone boundary.
 
-### Where things stand (after M6 and M7, merged in PRs #11 and #12)
-- **Done**: M0–M7. Next: **M8 on branch `m8-cumulative`** (already created from `main`), then M9.
-- **Parallel setup is over**: the M7 worktree `../studdy-buddy-m7` is no longer needed. Its branch `m7-visualizations` is merged, and the old remote `m7-viz` is stale. Remove both when convenient (`git worktree remove ../studdy-buddy-m7`).
+### Where things stand (after M8, merged in PR #14)
+- **Done**: M0–M8. Next: **M9 (import + export) on branch `m9-import`** (created from `main`; no M9 work yet). **The user asked to be told when M8 is done and to decide on M9 themselves, so don't start M9 without their go-ahead.**
+- **Cumulative reviews (M8)**:
+  - `quiz/cumulative.ts`:
+    - `nextReviewCode` = the smallest unused `K<n>`. It is used for the due review, manual requests (an explicit code must equal it), and grading.
+    - Due rule: at least `cadence` ready classes not covered by any released K.
+    - `reviewCodeForClass` gives the backlog `dueQuiz` label by ready-class position.
+  - **Requirement is coverage-based**: a K must include every unresolved, non-deferred backlog item of the classes it covers. `dueQuiz` is only a label.
+  - K jobs live on the highest covered class (`generation_job.quiz_code`). They release `K<n>` with `class_id` null. K submissions are graded like lesson quizzes.
+  - Progress gains a cumulative schedule (`due|building|available|submitted|graded|grading_failed`) and a `cumulativeDue` flag. `CumulativeStatus.nextCode` gates the retry button.
+  - Planner/builder robustness on cheaper models: `typeMix` is recomputed (`normalizeQuizPlan`), the mc correct option is moved to its planned index (`normalizeQuizDraft`), and builder fix rounds carry the stored quiz.
+- **Leftovers to clean up**: the M7 worktree `../studdy-buddy-m7` and the stale remote branch `m7-viz`. A scratch server may still be running on port 3997 (scratch data, viz demo).
 - **Agent models**: local `.env` runs `MODEL_PLANNER=claude-sonnet-4-6` and `MODEL_BUILDER=claude-haiku-4-5` for cost (the user's decision). Issue #13 tracks making those the code defaults. Mozaik 4.1.0 doesn't know `claude-haiku-5-5`.
 - **Grading (M6)**:
   - `submission.created` triggers a `grading` job (serialized per course), then `grader` (`agents/grader.ts`, `GradingResult`).
@@ -210,18 +219,13 @@ State and context a fresh session needs. Keep this section current at every mile
 - `npm run extract -- <file>` prints extracted text. `npm run lesson:try -- --class <id>` runs the lesson writer alone, without the DB pipeline (real API; output goes to `data/tmp/`).
 - Screenshots: `screenshots/<milestone>/` (git-ignored). For long pages, use `--window-size=1280,50000 --force-device-scale-factor=0.5`, then crop with `magick`.
 
-### M8 guidance
-- **Cadence (spec §11)**: K1 after class `cadence` covers classes 1..cadence, K2 after 2·cadence covers 1..2·cadence, and so on; a final review comes before the exam. A course without a cadence gets no automatic K, but the user can trigger one.
-- **Trigger**: offer `K<n>` (a button on the course and progress pages, plus a session-start flag "K<n> je na redu") once the class count with a ready lesson reaches n·cadence and `K<n>` doesn't exist yet. Don't build it unasked.
-- **Planner input**:
-  - the covered lessons (could be many: pass them all, or condensed per-topic sections if the context gets too big; check sizes);
-  - **every backlog item due for that K, which must be included** (spec §11);
-  - weak topics across the covered classes;
-  - observations.
-  Plan rows need a class number for every question (all are "repeats" of some class). Generalise `classNumber`/`ref` validation: for a K quiz, every row has `classNumber` and a `Predavanje N ›` ref.
-- **Build and review**: reuse the M4 build/review loop (`quiz-branch.ts`). K quizzes have `class_id` null. Grading currently skips quizzes without a class (`grading-branch.ts` logs and skips), so make K quizzes gradeable: the job needs a class for SSE, so use the latest covered class or relax `generation_job.class_id` for course-level jobs.
-- **Results**: backlog items due for K are resolved or updated by grading, as now. Add a cumulative schedule to the progress page (test, coverage, when, result).
-- **Quality check**: real K1 needs ≥ cadence classes with lessons. The dev DB has 1 class (cadence 4), so test with a scratch course with cadence 1, or generate a second class from `samples/` (class 02) on a scratch copy.
+### M9 guidance (only after the user's go-ahead)
+- **M9.1 import**:
+  - Look at the real source folders first (the existing Claude Code study setup: `lessons/NN-*.md`, `PNN-rezultati.md`, the progress record, quiz entries, visualizations; see APP-SPEC §5–§9 and §17).
+  - Probably needs an import agent for the Markdown progress and lesson tracking tables.
+  - Map to: `lesson`, `topic` and `topic_event`, `quiz` (old quizzes are immutable), `submission`/`result`, `backlog_item`, `next_step`, `learner_observation`, `visualization`.
+  - Ask the user where the source folders are; never copy private material into the repo or tests.
+- **M9.2 export**: one-way Markdown export of lessons, progress and results to a folder.
 
 ### M5 guidance
 - **Player API**:
