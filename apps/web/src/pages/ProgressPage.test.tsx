@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CourseProgress, ProgressQuizHistoryEntry } from "@studdy/shared";
 import { apiError, courseDetail, mockApi, renderAt, type Handler } from "../test/utils";
 
@@ -64,6 +64,69 @@ function open(data: CourseProgress, extra: Record<string, Handler> = {}) {
 const section = (name: string) => screen.getByRole("region", { name });
 
 describe("ProgressPage", () => {
+  describe("polling while grading runs", () => {
+    afterEach(() => vi.useRealTimers());
+
+    const running = () =>
+      progress({
+        quizHistory: [entry({ gradingStatus: "running", openScore: null, totalScore: null })],
+      });
+    const progressCalls = (requests: { method: string; path: string }[]) =>
+      requests.filter((r) => r.method === "GET" && r.path === "/api/courses/1/progress").length;
+
+    it("refetches every 5 s while grading runs, then stops once it is done", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      let calls = 0;
+      const { requests } = open(progress(), {
+        "GET /api/courses/1/progress": () => (++calls < 3 ? running() : progress()),
+      });
+      await screen.findByText("ocenjivanje u toku", { exact: false });
+      expect(progressCalls(requests)).toBe(1);
+
+      await vi.advanceTimersByTimeAsync(5000);
+      await waitFor(() => expect(progressCalls(requests)).toBe(2));
+      await vi.advanceTimersByTimeAsync(5000);
+      await waitFor(() => expect(progressCalls(requests)).toBe(3));
+      await screen.findByText("Ukupno: 3,9");
+
+      await vi.advanceTimersByTimeAsync(20000);
+      expect(progressCalls(requests)).toBe(3);
+    });
+
+    it("does not poll when nothing is running", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const { requests } = open(progress());
+      await screen.findByText("Ukupno: 3,9");
+      await vi.advanceTimersByTimeAsync(20000);
+      expect(progressCalls(requests)).toBe(1);
+    });
+
+    it("starts polling after Oceni, because the refetch reports running", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      let graded = false;
+      const failed = () =>
+        progress({
+          flags: {
+            classesWithoutLesson: [],
+            ungradedSubmissions: [{ submissionId: 9, quizCode: "P01", submittedAt: "x" }],
+          },
+          quizHistory: [entry({ gradingStatus: "failed", openScore: null, totalScore: null })],
+        });
+      const { requests } = open(progress(), {
+        "GET /api/courses/1/progress": () => (graded ? running() : failed()),
+        "POST /api/submissions/9/grade": () => {
+          graded = true;
+          return { id: 1 };
+        },
+      });
+      const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+      await user.click(await screen.findByRole("button", { name: "Oceni" }));
+      await waitFor(() => expect(progressCalls(requests)).toBe(2));
+      await vi.advanceTimersByTimeAsync(5000);
+      await waitFor(() => expect(progressCalls(requests)).toBe(3));
+    });
+  });
+
   it("renders all sections", async () => {
     open(progress());
     await screen.findByRole("heading", { level: 1, name: "Napredak" });
@@ -142,7 +205,7 @@ describe("ProgressPage", () => {
     const flagged = () =>
       progress({
         flags: {
-          classesWithoutLesson: [{ classId: 7, number: 3, title: "Kafka" }],
+          classesWithoutLesson: [{ classId: 7, number: 3, title: "Kafka", status: "draft" }],
           ungradedSubmissions: [
             {
               submissionId: 9,

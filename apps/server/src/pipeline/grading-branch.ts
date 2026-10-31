@@ -322,7 +322,7 @@ export function registerGradingBranch({
     }
   }
 
-  async function runGradingJob({
+  async function runOneGradingJob({
     classId,
     jobId,
     submissionId,
@@ -345,6 +345,31 @@ export function registerGradingBranch({
     emitJob(jobId);
     const payload: GradingDonePayload = { submissionId, resultId };
     coordinator.emit(DOMAIN_EVENTS.GRADING_DONE, payload);
+  }
+
+  /**
+   * Grading reads the learner's state (ratings, backlog, next steps) before the slow grader call and
+   * writes it afterwards, so two jobs of one course must not overlap: the older result would be
+   * saved last and overwrite newer progress. Jobs queue per course; other courses run in parallel.
+   */
+  const courseQueues = new Map<number, Promise<void>>();
+
+  function runGradingJob(payload: GradingRequestedPayload): Promise<void> {
+    const courseId =
+      db
+        .select({ courseId: classTable.courseId })
+        .from(classTable)
+        .where(eq(classTable.id, payload.classId))
+        .get()?.courseId ?? -payload.classId;
+    const previous = courseQueues.get(courseId) ?? Promise.resolve();
+    // `runOneGradingJob` handles its own failures; the catch keeps the chain alive regardless.
+    const run = previous.then(() => runOneGradingJob(payload));
+    const tail = run.catch(() => undefined);
+    courseQueues.set(courseId, tail);
+    void tail.then(() => {
+      if (courseQueues.get(courseId) === tail) courseQueues.delete(courseId);
+    });
+    return run;
   }
 
   coordinator.on<GradingRequestedPayload>(DOMAIN_EVENTS.GRADING_REQUESTED, runGradingJob);

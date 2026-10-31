@@ -269,6 +269,12 @@ const bad: [string, () => GradingResult, string][] = [
     'backlogResolve: topic "Nepoznata"',
   ],
   [
+    "a backlogResolve with the right name but another class's number",
+    () =>
+      mutated((r) => void r.backlogResolve.push({ topic: "Skladišta podataka", classNumber: 2 })),
+    'backlogResolve: topic "Skladišta podataka" with classNumber 2',
+  ],
+  [
     "a topic both added and resolved",
     () => mutated((r) => void r.backlogResolve.push({ topic: "Stream obrada", classNumber: 2 })),
     "both added to and resolved from the backlog",
@@ -333,7 +339,7 @@ describe("buildGraderMessage", () => {
           assessmentFormat: "PZ: 15 pitanja",
           reviewCadence: null,
         },
-        backlog: [{ topic: "Neka tema", dueQuiz: "K1", reason: "weak" }],
+        backlog: [{ topic: "Neka tema", classNumber: 1, dueQuiz: "K1", reason: "weak" }],
         observations: ["Računanje je slabije"],
         nextSteps: ["Prvo ovo"],
         plan: null,
@@ -341,13 +347,23 @@ describe("buildGraderMessage", () => {
     );
     for (const s of [
       "Format ocenjivanja:\nPZ: 15 pitanja",
-      "Neka tema (obavezno u K1): weak",
+      "Neka tema (predavanje 01) — obavezno u K1: weak",
       "Računanje je slabije",
       "1. Prvo ovo",
       "Plan kviza nije dostupan.",
     ]) {
       expect(message).toContain(s);
     }
+  });
+
+  it("tells same-named backlog topics of different classes apart", () => {
+    const message = buildGraderMessage(
+      gradingCtxFixture({
+        backlog: [{ topic: "Stream obrada", classNumber: 1, dueQuiz: "K1", reason: "gap" }],
+      }),
+    );
+    expect(message).toContain("- Stream obrada (predavanje 01) — obavezno u K1: gap");
+    expect(message).not.toContain("Stream obrada (predavanje 02) — obavezno");
   });
 
   it("renders a whole-question Ne znam on a match question", () => {

@@ -82,8 +82,31 @@ describe("grading context loaders", () => {
         { courseId: b, topicId: other, dueQuiz: "K2", reason: "left_out" },
       ])
       .run();
-    expect(loadBacklog(db, a)).toEqual([{ topic: "Otvorena", dueQuiz: "K1", reason: "weak" }]);
-    expect(loadBacklog(db, b)).toEqual([{ topic: "Tuđa", dueQuiz: "K2", reason: "left_out" }]);
+    expect(loadBacklog(db, a)).toEqual([
+      { topic: "Otvorena", classNumber: 1, dueQuiz: "K1", reason: "weak" },
+    ]);
+    expect(loadBacklog(db, b)).toEqual([
+      { topic: "Tuđa", classNumber: 1, dueQuiz: "K2", reason: "left_out" },
+    ]);
+
+    // Same topic name in two classes: only class 2's is on the backlog.
+    const cls2 = db
+      .insert(classTable)
+      .values({ courseId: a, number: 2, title: "Čas 2" })
+      .returning()
+      .get().id;
+    const sameName = db
+      .insert(topic)
+      .values({ courseId: a, classId: cls2, position: 0, name: "Otvorena" })
+      .returning()
+      .get().id;
+    db.insert(backlogItem)
+      .values({ courseId: a, topicId: sameName, dueQuiz: "K3", reason: "gap" })
+      .run();
+    expect(loadBacklog(db, a)).toEqual([
+      { topic: "Otvorena", classNumber: 1, dueQuiz: "K1", reason: "weak" },
+      { topic: "Otvorena", classNumber: 2, dueQuiz: "K3", reason: "gap" },
+    ]);
 
     db.insert(nextStep)
       .values([

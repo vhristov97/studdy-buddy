@@ -183,8 +183,8 @@ describe("loadQuizContext", () => {
       .run();
     const ctx = loadQuizContext(db, class2);
     expect(ctx.backlog).toEqual([
-      { topic: "Slaba tema", dueQuiz: "K1", reason: "weak" },
-      { topic: "Druga tema", dueQuiz: "K2", reason: "gap" },
+      { topic: "Slaba tema", classNumber: 1, dueQuiz: "K1", reason: "weak" },
+      { topic: "Druga tema", classNumber: 2, dueQuiz: "K2", reason: "gap" },
     ]);
     expect(ctx.observations).toEqual(["Prva", "Druga"]);
     db.delete(backlogItem).run();

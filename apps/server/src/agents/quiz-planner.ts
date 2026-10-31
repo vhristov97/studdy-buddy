@@ -173,7 +173,12 @@ export function buildQuizPlannerMessage(ctx: QuizContext): string {
     ),
     ctx.backlog.length > 0
       ? "Backlog (obavezno u ovom kvizu ako je dospeo):\n" +
-        ctx.backlog.map((b) => `- ${b.topic} (obavezno u ${b.dueQuiz}): ${b.reason}`).join("\n")
+        ctx.backlog
+          .map(
+            (b) =>
+              `- ${b.topic} (predavanje ${String(b.classNumber).padStart(2, "0")}) — obavezno u ${b.dueQuiz}: ${b.reason}`,
+          )
+          .join("\n")
       : "Backlog je prazan.",
     ctx.observations.length > 0
       ? `Zapažanja o studentu:\n${ctx.observations.map((o) => `- ${o}`).join("\n")}`

@@ -78,9 +78,15 @@ export function loadObservations(db: Db): string[] {
 
 export function loadBacklog(db: Db, courseId: number): BacklogItem[] {
   return db
-    .select({ topic: topic.name, dueQuiz: backlogItem.dueQuiz, reason: backlogItem.reason })
+    .select({
+      topic: topic.name,
+      classNumber: classTable.number,
+      dueQuiz: backlogItem.dueQuiz,
+      reason: backlogItem.reason,
+    })
     .from(backlogItem)
     .innerJoin(topic, eq(topic.id, backlogItem.topicId))
+    .innerJoin(classTable, eq(classTable.id, topic.classId))
     .where(and(eq(backlogItem.courseId, courseId), isNull(backlogItem.resolvedAt)))
     .orderBy(asc(backlogItem.id))
     .all();

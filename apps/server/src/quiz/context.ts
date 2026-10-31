@@ -24,6 +24,8 @@ export interface QuizTopicInput {
 
 export interface BacklogItem {
   topic: string;
+  /** Number of the class the topic belongs to (topic names can repeat across classes). */
+  classNumber: number;
   /** The quiz the topic is due in, e.g. "K1". */
   dueQuiz: string;
   reason: string;

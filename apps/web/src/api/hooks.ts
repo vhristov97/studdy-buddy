@@ -134,11 +134,20 @@ export function useSubmissions(ids: readonly number[]) {
   });
 }
 
-/** Progress of a course: Sledeće, backlog, topic mastery, quiz history, observations, flags. */
+export const PROGRESS_POLL_MS = 5000;
+
+/**
+ * Progress of a course: Sledeće, backlog, topic mastery, quiz history, observations, flags.
+ * Refetches every few seconds while any submission is being graded, so finished results appear.
+ */
 export function useCourseProgress(courseId: number) {
   return useQuery({
     queryKey: queryKeys.courseProgress(courseId),
     queryFn: () => apiGet<CourseProgress>(`/api/courses/${courseId}/progress`),
+    refetchInterval: (query) =>
+      query.state.data?.quizHistory.some((q) => q.gradingStatus === "running")
+        ? PROGRESS_POLL_MS
+        : false,
   });
 }
 

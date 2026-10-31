@@ -207,11 +207,11 @@ describe("buildQuizPlannerMessage", () => {
   it("lists backlog and observations when present, and says so when earlier topics are empty", () => {
     const ctx = ctxFixture({
       earlierTopics: [],
-      backlog: [{ topic: "Neka tema", dueQuiz: "K1", reason: "izostavljeno" }],
+      backlog: [{ topic: "Neka tema", classNumber: 1, dueQuiz: "K1", reason: "izostavljeno" }],
       observations: ["Računanje je slabije"],
     });
     const message = buildQuizPlannerMessage(ctx);
-    expect(message).toContain("Neka tema (obavezno u K1): izostavljeno");
+    expect(message).toContain("Neka tema (predavanje 01) — obavezno u K1: izostavljeno");
     expect(message).toContain("Računanje je slabije");
     expect(message).toContain("Nema slabih tema iz ranijih predavanja");
   });

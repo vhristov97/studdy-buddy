@@ -1,10 +1,11 @@
-import { and, asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, notExists } from "drizzle-orm";
 import type { CourseProgress, ProgressTopic } from "@studdy/shared";
 import type { Db } from "../db/client.js";
 import {
   backlogItem,
   classTable,
   learnerObservation,
+  lesson,
   material,
   nextStep,
   quiz,
@@ -74,9 +75,22 @@ export function getCourseProgress(db: Db, courseId: number): CourseProgress {
     .all();
 
   const classesWithoutLesson = db
-    .select({ classId: classTable.id, number: classTable.number, title: classTable.title })
+    .select({
+      classId: classTable.id,
+      number: classTable.number,
+      title: classTable.title,
+      status: classTable.status,
+    })
     .from(classTable)
-    .where(and(eq(classTable.courseId, courseId), eq(classTable.status, "draft")))
+    .where(
+      and(
+        eq(classTable.courseId, courseId),
+        inArray(classTable.status, ["draft", "failed"]),
+        notExists(
+          db.select({ id: lesson.id }).from(lesson).where(eq(lesson.classId, classTable.id)),
+        ),
+      ),
+    )
     .orderBy(asc(classTable.number))
     .all()
     .filter(

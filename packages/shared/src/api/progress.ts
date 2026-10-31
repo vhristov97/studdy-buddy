@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { BacklogReason } from "../grading/result";
+import { ClassStatus } from "./courses";
 import { TopicRating } from "./lessons";
 import { GradingStatus } from "./submissions";
 
@@ -45,9 +46,14 @@ export const ProgressQuizHistoryEntry = z.object({
 export type ProgressQuizHistoryEntry = z.infer<typeof ProgressQuizHistoryEntry>;
 
 export const ProgressFlags = z.object({
-  /** Draft classes with at least one usable class material. */
+  /** Draft or failed classes with at least one usable class material and no lesson. */
   classesWithoutLesson: z.array(
-    z.object({ classId: z.number().int(), number: z.number().int(), title: z.string() }),
+    z.object({
+      classId: z.number().int(),
+      number: z.number().int(),
+      title: z.string(),
+      status: ClassStatus,
+    }),
   ),
   /** Submissions without a grading result (running, failed or never started). */
   ungradedSubmissions: z.array(

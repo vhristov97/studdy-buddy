@@ -768,11 +768,167 @@ describe("grading branch", () => {
       });
       expect(p.quizHistory[1]!.totalScore).toBeCloseTo(p.quizHistory[1]!.autoScore + 0.4, 6);
       expect(p.flags).toEqual({
-        classesWithoutLesson: [{ classId: draft, number: 3, title: "Nova" }],
+        classesWithoutLesson: [{ classId: draft, number: 3, title: "Nova", status: "draft" }],
         ungradedSubmissions: [
           { submissionId: ungraded, quizCode: "P02", submittedAt: expect.any(String) },
         ],
       });
+    });
+  });
+
+  describe("per-course serialization", () => {
+    /** A grader that records its calls and finishes only when released. */
+    function gatedGrader(order: string[], contexts: Parameters<Grade>[0][]) {
+      const gates: Array<{ release: (r?: GradingResult | Error) => void }> = [];
+      const fn = vi.fn<Grade>(async (ctx) => {
+        order.push(`start:${ctx.submission.id}`);
+        contexts.push(ctx);
+        const outcome = await new Promise<GradingResult | Error>((resolve) => {
+          gates.push({ release: (r) => resolve(r ?? gradingResultFixture()) });
+        });
+        order.push(`end:${ctx.submission.id}`);
+        if (outcome instanceof Error) throw outcome;
+        return outcome;
+      });
+      return { fn, gates };
+    }
+
+    /** A second course with the same structure and its own quiz and submission. */
+    function secondCourse(): { quizId: number; submissionId: number } {
+      const otherCourse = db()
+        .insert(course)
+        .values({ name: "Drugi kurs", reviewCadence: 4 })
+        .returning({ id: course.id })
+        .get().id;
+      const classIds = [1, 2].map(
+        (number) =>
+          db()
+            .insert(classTable)
+            .values({ courseId: otherCourse, number, title: `Čas ${number}`, status: "ready" })
+            .returning({ id: classTable.id })
+            .get().id,
+      );
+      for (const id of classIds) {
+        db().insert(lesson).values({ classId: id, bodyMd: "Lekcija." }).run();
+      }
+      const names: Array<[number, string]> = [
+        [0, "Skladišta podataka"],
+        [1, "Batch obrada"],
+        [1, "Stream obrada"],
+        [1, "Lambda arhitektura"],
+      ];
+      names.forEach(([ci, name], position) => {
+        db()
+          .insert(topic)
+          .values({ courseId: otherCourse, classId: classIds[ci]!, position, name, rating: "?" })
+          .run();
+      });
+      const q = quizFixture();
+      const otherQuiz = db()
+        .insert(quiz)
+        .values({
+          courseId: otherCourse,
+          classId: classIds[1]!,
+          code: q.code,
+          title: q.title,
+          subtitle: q.subtitle,
+          chipsJson: q.chips,
+          questionsJson: q.questions,
+        })
+        .returning({ id: quiz.id })
+        .get().id;
+      const quizJob = db()
+        .insert(generationJob)
+        .values({
+          classId: classIds[1]!,
+          kind: "quiz",
+          stage: "quiz-planner",
+          status: "succeeded",
+          attempt: 1,
+        })
+        .returning({ id: generationJob.id })
+        .get().id;
+      db()
+        .insert(quizPlan)
+        .values({
+          jobId: quizJob,
+          classId: classIds[1]!,
+          planJson: planFixture(),
+          logJson: [],
+          quizId: otherQuiz,
+        })
+        .run();
+      return { quizId: otherQuiz, submissionId: newSubmission(otherQuiz) };
+    }
+
+    const tick = () => new Promise((r) => setTimeout(r, 30));
+
+    it("starts the second job of a course only after the first one persisted", async () => {
+      const order: string[] = [];
+      const contexts: Parameters<Grade>[0][] = [];
+      const { fn, gates } = gatedGrader(order, contexts);
+      grade.mockImplementation(fn);
+      const second = newSubmission();
+
+      submit(submissionId);
+      submit(second);
+      await waitFor(() => gates.length === 1);
+      await tick();
+      expect(order).toEqual([`start:${submissionId}`]);
+      expect(jobs().every((j) => j.status === "running" && j.stage === "grader")).toBe(true);
+      expect(contexts[0]!.nextSteps).toEqual([]);
+
+      gates[0]!.release(mutated((r) => (r.nextSteps = ["Prvi korak"])));
+      await waitFor(() => gates.length === 2);
+      expect(order).toEqual([`start:${submissionId}`, `end:${submissionId}`, `start:${second}`]);
+      // The second grader sees what the first one saved.
+      expect(contexts[1]!.nextSteps).toEqual(["Prvi korak"]);
+      expect(db().select().from(result).all()).toHaveLength(1);
+
+      gates[1]!.release(mutated((r) => (r.nextSteps = ["Drugi korak"])));
+      await waitFor(() => finished(2));
+      expect(jobs().map((j) => j.status)).toEqual(["succeeded", "succeeded"]);
+      expect(
+        db()
+          .select()
+          .from(nextStep)
+          .where(eq(nextStep.courseId, courseId))
+          .all()
+          .map((n) => n.text),
+      ).toEqual(["Drugi korak"]);
+    });
+
+    it("grades different courses concurrently", async () => {
+      const other = secondCourse();
+      const order: string[] = [];
+      const { fn, gates } = gatedGrader(order, []);
+      grade.mockImplementation(fn);
+
+      submit(submissionId);
+      submit(other.submissionId, other.quizId);
+      await waitFor(() => gates.length === 2);
+      expect(order).toEqual([`start:${submissionId}`, `start:${other.submissionId}`]);
+
+      gates.forEach((g) => g.release());
+      await waitFor(() => finished(2));
+    });
+
+    it("a failing first job does not block the next one of the course", async () => {
+      const order: string[] = [];
+      const { fn, gates } = gatedGrader(order, []);
+      grade.mockImplementation(fn);
+      const second = newSubmission();
+
+      submit(submissionId);
+      submit(second);
+      await waitFor(() => gates.length === 1);
+      gates[0]!.release(new Error("API down"));
+      await waitFor(() => gates.length === 2);
+      gates[1]!.release();
+      await waitFor(() => finished(2));
+
+      const byId = Object.fromEntries(jobs().map((j) => [j.submissionId, j.status]));
+      expect(byId).toEqual({ [submissionId]: "failed", [second]: "succeeded" });
     });
   });
 });
