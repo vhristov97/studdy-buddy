@@ -5,6 +5,8 @@ import Fastify, { type FastifyInstance } from "fastify";
 import type { Config } from "./config.js";
 import type { Db } from "./db/client.js";
 import { REPO_ROOT } from "./paths.js";
+import { courseRoutes } from "./routes/courses.js";
+import { registerErrorHandler } from "./routes/errors.js";
 import { healthRoutes } from "./routes/health.js";
 
 export interface AppDeps {
@@ -25,7 +27,9 @@ export function buildApp({
     logger: process.env.VITEST ? false : true,
   });
   app.decorate("config", config);
+  registerErrorHandler(app);
   app.register(healthRoutes, { db });
+  app.register(courseRoutes, { db });
 
   const webRoot = path.resolve(webDistDir);
   if (fs.existsSync(path.join(webRoot, "index.html"))) {

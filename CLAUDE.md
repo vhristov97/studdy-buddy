@@ -38,6 +38,7 @@ Config comes from the repo-root `.env` (see `.env.example`); `DATA_DIR` (default
 - **Opus verifies** each result (read the diff, run build/tests, check against the plan and spec).
 - **Fix loop, max 3 cycles**: if verification fails, Opus diagnoses the problem and sends Sonnet concrete fix instructions; Sonnet fixes; Opus re-verifies. After the 3rd failed cycle, stop and report it in chat so the user can look into it, summarizing what was tried and what still fails.
 - **Git**: one feature branch per milestone (e.g. `m0-scaffold`, `m1-agents`). Commit after each task passes verification, one commit per task. Subagents never commit; Opus does after verifying. Stage files by explicit path, never `git add -A`/`git add .` (a stray `.env` copy got committed that way once).
+- **PR loop**: when a milestone is done, push the branch, open a PR to `main`, and monitor it for Devin's review (inline comments, reviews and PR comments). Verify each finding; real ones go through the Sonnet fix loop, then commit, push and reply on the thread with what changed (or reply why a finding doesn't apply). When Devin posts "All Devin Review issues are resolved.", merge the PR (merge commit), update `main`, and start the next milestone on a new branch. If GitHub doesn't pick up a push, ask the user to close and reopen the PR.
 
 ## Product flow
 
