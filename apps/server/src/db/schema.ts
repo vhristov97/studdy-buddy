@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   index,
   integer,
+  real,
   sqliteTable,
   text,
   uniqueIndex,
@@ -20,6 +21,8 @@ import {
   type QuizReport,
   type QuizReview,
   type Question,
+  type QuestionResult,
+  type SubmissionAnswers,
 } from "@studdy/shared";
 
 /** Placeholder table; real tables arrive in later tasks. */
@@ -216,3 +219,25 @@ export const quizPlan = sqliteTable("quiz_plan", {
   quizId: integer("quiz_id").references(() => quiz.id, { onDelete: "set null" }),
   createdAt: createdAt(),
 });
+
+/** A student's attempt at a quiz. Scored on the server when it is created; immutable afterwards. */
+export const submission = sqliteTable(
+  "submission",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    quizId: integer("quiz_id")
+      .notNull()
+      .references(() => quiz.id, { onDelete: "cascade" }),
+    answersJson: text("answers_json", { mode: "json" }).$type<SubmissionAnswers>().notNull(),
+    autoScore: real("auto_score").notNull(),
+    autoMax: integer("auto_max").notNull(),
+    /** "q3" or "q14.r2" ids. */
+    dontKnowJson: text("dont_know_json", { mode: "json" }).$type<string[]>().notNull(),
+    resultsJson: text("results_json", { mode: "json" }).$type<QuestionResult[]>().notNull(),
+    openPending: integer("open_pending").notNull(),
+    submittedAt: integer("submitted_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`),
+  },
+  (table) => [index("submission_quiz_id_idx").on(table.quizId)],
+);

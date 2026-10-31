@@ -114,7 +114,7 @@ Dependencies: M0 → M1 → M2 → M3, then M4 ∥ M7 (M5 can start once the M4 
 
 ### M5: Quiz player
 - [ ] M5.1 Player per spec §8: picker (newest preselected), all four question types, "Ne znam" on every question, metadata, autosave (fault-tolerant localStorage), progress bar, two-step submit, instant feedback for closed questions, score line, reset, JSON fallback with copy button.
-- [ ] M5.2 Submission API + persistence in the §8 format, with auto-scoring in `packages/shared` (shared with the server).
+- [x] M5.2 Submission API + persistence in the §8 format, with auto-scoring in `packages/shared` (shared with the server).
 
 ### M6: Grading + progress
 - [ ] M6.1 grader prompt + output schema (open-answer grades, gap vs misconception classification, topic rating changes, backlog changes, observations, next steps, write-up). Grading starts automatically on submit.

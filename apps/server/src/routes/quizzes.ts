@@ -1,8 +1,8 @@
 import type { FastifyPluginAsync } from "fastify";
-import type { QuizSummary } from "@studdy/shared";
+import type { PublicQuiz, QuizSummary } from "@studdy/shared";
 import type { Db } from "../db/client.js";
 import { getCourse } from "../repositories/courses.js";
-import { listQuizSummaries } from "../repositories/quizzes.js";
+import { getPublicQuiz, listQuizSummaries } from "../repositories/quizzes.js";
 import { notFound, parseId } from "./errors.js";
 
 export interface QuizRouteOptions {
@@ -16,6 +16,17 @@ export const quizRoutes: FastifyPluginAsync<QuizRouteOptions> = async (app, { db
       const courseId = parseId("courseId", request.params.courseId);
       if (!getCourse(db, courseId)) throw notFound("Course");
       return listQuizSummaries(db, courseId);
+    },
+  );
+
+  /** Questions without answers, explanations or key points (spec section 16). */
+  app.get<{ Params: { quizId: string } }>(
+    "/api/quizzes/:quizId",
+    async (request): Promise<PublicQuiz> => {
+      const quizId = parseId("quizId", request.params.quizId);
+      const found = getPublicQuiz(db, quizId);
+      if (!found) throw notFound("Quiz");
+      return found;
     },
   );
 };

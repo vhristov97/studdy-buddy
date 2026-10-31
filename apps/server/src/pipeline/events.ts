@@ -10,6 +10,8 @@ export const DOMAIN_EVENTS = {
   QUIZ_REQUESTED: "quiz.requested",
   /** Payload `QuizReleasedPayload`: the quiz passed review and is in the library. */
   QUIZ_RELEASED: "quiz.released",
+  /** Payload `SubmissionCreatedPayload`: a quiz submission was saved; grading (M6) reacts to it. */
+  SUBMISSION_CREATED: "submission.created",
   /** Payload: `PipelineEvent` of type `job`. Feeds the SSE stream. */
   JOB_UPDATED: "job.updated",
   /** Payload: `PipelineEvent` of type `progress`. Feeds the SSE stream. */
@@ -35,6 +37,11 @@ export interface QuizReleasedPayload {
   classId: number;
   quizId: number;
   code: string;
+}
+
+export interface SubmissionCreatedPayload {
+  quizId: number;
+  submissionId: number;
 }
 
 export type JobUpdatedPayload = Extract<PipelineEvent, { type: "job" }>;
