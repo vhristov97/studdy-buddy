@@ -15,8 +15,9 @@ Proof of concept, in progress.
 | M3 Combined notes: Generate button, lesson writer, lesson view with tracking table | done |
 | M4 Quiz branch (planner, builder, review loop) | done |
 | M5 Quiz player and submissions | done |
-| M6 Grading and progress | next |
-| M7 Visualizations · M8 Cumulative reviews · M9 Import/export | planned |
+| M6 Grading and progress | done |
+| M7 Visualizations | in progress (parallel branch) |
+| M8 Cumulative reviews · M9 Import/export | planned |
 
 What works today:
 
@@ -38,6 +39,12 @@ What works today:
   - your draft autosaves;
   - after you submit you get instant feedback with the correct answers and explanations, plus a score;
   - open answers wait for grading, and past submissions stay viewable.
+- Grading starts automatically after each submission (Opus, spec §9):
+  - open answers are graded against their key points with fractional scores;
+  - every miss is classified: „Ne znam" or unanswered is a gap, a wrong answer is a misconception (both invariants are re-checked on the server before saving);
+  - topic ratings, the backlog („Obavezno u K…"), the „Sledeće" list and cross-course observations are updated in one transaction;
+  - a results write-up is shown on the submission.
+- Course progress page (`Napredak`): session-start flags (classes without a lesson, ungraded submissions), „Sledeće", backlog, topic mastery overview, quiz history and observations.
 
 ## Stack
 
@@ -74,6 +81,7 @@ npm run db:generate    # new migration from apps/server/src/db/schema.ts
 npm run extract -- <file>               # print the text extracted from a PDF/HTML/Markdown file
 npm run lesson:try -- --class <id>      # run the lesson writer on a class (real API, writes to data/tmp/)
 npm run quiz:try -- --class <id>        # plan, build and review a quiz once (real API, writes to data/tmp/)
+npm run grade:try -- --submission <id>  # grade a submission without saving it (real API, writes to data/tmp/)
 npm run smoke:agent    # tiny real-API check of the agent stack
 ```
 
