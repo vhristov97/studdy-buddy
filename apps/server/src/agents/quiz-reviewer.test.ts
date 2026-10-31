@@ -32,6 +32,7 @@ function reviewInput(): QuizReviewerInput {
     quiz,
     flags: [{ questionId: "q2", issue: "Plan deluje sumnjivo." }],
     lessonMd: "LEKCIJA-TEKST",
+    earlierLessons: [{ classNumber: 1, title: "Skladišta", lessonMd: "RANIJA-LEKCIJA-TEKST" }],
     report: validateQuiz(quiz),
   };
 }
@@ -67,9 +68,17 @@ describe("buildQuizReviewerMessage", () => {
       "Errors (0):",
       "mc correct-answer positions",
       "LEKCIJA-TEKST",
+      "RANIJA-LEKCIJA-TEKST",
+      '<ranija_lekcija predavanje="1">',
     ]) {
       expect(message).toContain(s);
     }
+  });
+
+  it("has no earlier lesson section when there are no earlier lessons", () => {
+    expect(buildQuizReviewerMessage({ ...reviewInput(), earlierLessons: [] })).not.toContain(
+      "<ranija_lekcija",
+    );
   });
 
   it("says when the builder set no flags", () => {

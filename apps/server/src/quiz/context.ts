@@ -28,6 +28,15 @@ export interface BacklogItem {
   reason: string;
 }
 
+export interface EarlierLesson {
+  classNumber: number;
+  title: string;
+  lessonMd: string;
+}
+
+/** How many earlier classes (the most recent ones with repeat candidates) feed repeat questions. */
+export const MAX_EARLIER_LESSONS = 3;
+
 /** Everything the quiz planner (and, in part, the builder and reviewer) needs about one class. */
 export interface QuizContext {
   course: { name: string; persona: string | null; assessmentFormat: string | null };
@@ -37,8 +46,16 @@ export interface QuizContext {
   lessonMd: string;
   /** Topics of this class, in lesson order. */
   topics: QuizTopicInput[];
-  /** Weak topics of earlier classes (rated ✗ or ~, or with misconception history): repeat candidates. */
+  /**
+   * Weak topics of earlier classes (rated ✗ or ~, or with misconception history): repeat
+   * candidates. Only from the classes in `earlierLessons`.
+   */
   earlierTopics: (QuizTopicInput & { classNumber: number })[];
+  /**
+   * The lessons of the earlier classes that have repeat candidates in `earlierTopics`, oldest
+   * first; the source material for repeat questions. Limited to the most recent classes.
+   */
+  earlierLessons: EarlierLesson[];
   /** Topics left out of earlier quizzes. Empty until the backlog table arrives (M6). */
   backlog: BacklogItem[];
   /** Learner observations. Empty until M6. */
@@ -96,15 +113,28 @@ export function loadQuizContext(db: Db, classId: number): QuizContext {
     .where(and(eq(classTable.courseId, row.cls.courseId), lt(classTable.number, row.cls.number)))
     .orderBy(asc(classTable.number))
     .all();
-  const earlierTopics: QuizContext["earlierTopics"] = [];
+  const withCandidates: {
+    cls: (typeof earlierClasses)[number];
+    lesson: LessonView;
+    topics: QuizTopicInput[];
+  }[] = [];
   for (const earlier of earlierClasses) {
     const view = getLessonView(db, earlier.id);
     if (!view) continue;
-    for (const t of view.topics) {
-      const input = toTopicInput(t);
-      if (isRepeatCandidate(input)) earlierTopics.push({ ...input, classNumber: earlier.number });
-    }
+    const candidates = view.topics.map(toTopicInput).filter(isRepeatCandidate);
+    if (candidates.length > 0)
+      withCandidates.push({ cls: earlier, lesson: view, topics: candidates });
   }
+  // Every candidate keeps its lesson: only the most recent classes with candidates are used.
+  const recent = withCandidates.slice(-MAX_EARLIER_LESSONS);
+  const earlierTopics: QuizContext["earlierTopics"] = recent.flatMap((c) =>
+    c.topics.map((t) => ({ ...t, classNumber: c.cls.number })),
+  );
+  const earlierLessons: EarlierLesson[] = recent.map((c) => ({
+    classNumber: c.cls.number,
+    title: c.cls.title,
+    lessonMd: c.lesson.bodyMd,
+  }));
 
   return {
     course: {
@@ -117,6 +147,7 @@ export function loadQuizContext(db: Db, classId: number): QuizContext {
     lessonMd: lesson.bodyMd,
     topics: lesson.topics.map(toTopicInput),
     earlierTopics,
+    earlierLessons,
     backlog: [],
     observations: [],
   };

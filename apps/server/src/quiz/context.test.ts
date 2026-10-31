@@ -11,6 +11,7 @@ let handle: DatabaseHandle;
 let class1: number;
 let class2: number;
 let class3: number;
+let limitClass: number;
 
 function addClass(courseId: number, number: number, withLesson: boolean): number {
   const { db } = handle;
@@ -111,6 +112,14 @@ beforeAll(() => {
       correctionText: "Ispravno B",
     })
     .run();
+
+  // A second course: five earlier classes where #1-#4 have weak topics and #5 has none.
+  const c2 = db.insert(course).values({ name: "Kurs 2" }).returning().get();
+  for (let n = 1; n <= 5; n++) {
+    const id = addClass(c2.id, n, true);
+    addTopic(c2.id, id, 0, `Tema ${n}`, n <= 4 ? "✗" : "✓");
+  }
+  limitClass = addClass(c2.id, 6, true);
 });
 
 afterAll(() => {
@@ -160,8 +169,26 @@ describe("loadQuizContext", () => {
     });
   });
 
-  it("has no earlier topics for the first class", () => {
-    expect(loadQuizContext(handle.db, class1).earlierTopics).toEqual([]);
+  it("has no earlier topics or lessons for the first class", () => {
+    const ctx = loadQuizContext(handle.db, class1);
+    expect(ctx.earlierTopics).toEqual([]);
+    expect(ctx.earlierLessons).toEqual([]);
+  });
+
+  it("provides the lessons of the earlier classes that have repeat candidates", () => {
+    expect(loadQuizContext(handle.db, class2).earlierLessons).toEqual([
+      { classNumber: 1, title: "Predavanje 1", lessonMd: "Lekcija 1" },
+    ]);
+  });
+
+  it("limits earlier lessons to the 3 most recent classes with candidates and drops older topics", () => {
+    const ctx = loadQuizContext(handle.db, limitClass);
+    expect(ctx.earlierLessons.map((l) => l.classNumber)).toEqual([2, 3, 4]);
+    expect(ctx.earlierTopics.map((t) => [t.classNumber, t.name])).toEqual([
+      [2, "Tema 2"],
+      [3, "Tema 3"],
+      [4, "Tema 4"],
+    ]);
   });
 
   it("throws for a missing class or a class without a lesson", () => {

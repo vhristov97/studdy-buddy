@@ -8,6 +8,7 @@ import {
 } from "@studdy/shared";
 import { z } from "zod";
 import { config } from "../config.js";
+import type { EarlierLesson } from "../quiz/context.js";
 import { runStage, type StageSpec } from "./stage.js";
 
 export interface QuizReviewerOptions {
@@ -19,6 +20,8 @@ export interface QuizReviewerInput {
   quiz: Quiz;
   flags: QuizDraftFlag[];
   lessonMd: string;
+  /** Lessons of earlier classes, the source for repeat questions (plan rows with isRepeat true). */
+  earlierLessons: EarlierLesson[];
   /** The §7.3 validator's report on `quiz`. */
   report: QuizReport;
 }
@@ -32,12 +35,13 @@ You receive, in the user message:
 - the built quiz as JSON;
 - the builder's flags: places where it thinks the plan looks wrong (it kept them as planned);
 - the automatic checker's report (errors, warnings, the distribution of correct mc positions);
-- the lesson note (inside <lekcija>), the source of truth. Its tags: no tag = from the slides; (P) = the lecturer's remark, authoritative; (D) = the tutor's addition.
+- the lesson note (inside <lekcija>), the source of truth. Its tags: no tag = from the slides; (P) = the lecturer's remark, authoritative; (D) = the tutor's addition;
+- when the plan has repeat questions (isRepeat true), the lessons of the earlier classes they come from (each inside <ranija_lekcija>). The quiz does not mark repeat questions, so identify them through the plan (isRepeat true, ref "Predavanje <N> › ...") and check them against the matching earlier lesson instead of the current one.
 
 # What to check
 
 Go through EVERY question. Correctness comes first.
-1. Correctness: the keyed answer is right according to the plan AND the lesson. Re-derive it yourself: for num check the arithmetic and the unit; for match check every row; for mc check that the option at the answer index is the correct one and that no other option is also defensible. The explanation must agree with the key.
+1. Correctness: the keyed answer is right according to the plan AND the lesson (for a repeat question, the earlier lesson of the class named in its ref). Re-derive it yourself: for num check the arithmetic and the unit; for match check every row; for mc check that the option at the answer index is the correct one and that no other option is also defensible. The explanation must agree with the key.
 2. Exactly one defensible answer: no second option that is also right under a reasonable reading; no "sve navedeno" / "ništa od navedenog"; no trick wording.
 3. Distractors: real misconceptions or typical confusions, plausible to someone who half-knows the topic. Not throwaways. Where the plan has targetsMisconception, that misconception is the main distractor.
 4. The correct option does not stand out: similar length, structure and hedging as the others. The checker's mc_correct_stands_out warning is a hint, not a verdict.
@@ -77,6 +81,11 @@ export function buildQuizReviewerMessage(input: QuizReviewerInput): string {
       : "Graditelj nije postavio zastavice.",
     `Izveštaj automatske provere:\n${formatQuizReport(input.report)}`,
     `<lekcija>\n${input.lessonMd}\n</lekcija>`,
+    ...input.earlierLessons.map(
+      (l) =>
+        `Ranija lekcija, predavanje ${l.classNumber}: ${l.title} (izvor za pitanja za ponavljanje)\n` +
+        `<ranija_lekcija predavanje="${l.classNumber}">\n${l.lessonMd}\n</ranija_lekcija>`,
+    ),
     `Pregledaj kviz ${input.quiz.code} prema uputstvu.`,
   ].join("\n\n");
 }

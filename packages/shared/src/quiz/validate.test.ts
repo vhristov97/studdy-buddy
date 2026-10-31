@@ -252,6 +252,16 @@ describe("validateQuiz: match", () => {
     ).toBeTruthy();
   });
 
+  it.each(["", "   ", 3, null])("flags an empty or non-string row %j", (value) => {
+    const report = check((q) => (q.questions[2].rows[1] = value));
+    expect(errorAt(report, "match_empty_row", "questions[2].rows[1]")).toBeDefined();
+  });
+
+  it.each(["", "   ", 3, null])("flags an empty or non-string choice %j", (value) => {
+    const report = check((q) => (q.questions[2].choices[0] = value));
+    expect(errorAt(report, "match_empty_choice", "questions[2].choices[0]")).toBeDefined();
+  });
+
   it("flags an answer that is not an array of the row count", () => {
     for (const answer of [undefined, [1], [1, 0, 1], "10"]) {
       const report = check((q) => (q.questions[2].answer = answer));

@@ -43,7 +43,7 @@ const bad: [string, () => QuizPlan, string][] = [
   [
     "repeat flag on a current topic",
     () => mutated((p) => void (p.questions[1]!.isRepeat = true)),
-    "belongs to this class, so isRepeat must be false",
+    "is not one of the earlier topics",
   ],
   [
     "missing repeat flag on an earlier topic",
@@ -93,7 +93,7 @@ const bad: [string, () => QuizPlan, string][] = [
   [
     "missing misconception coverage",
     () => mutated((p) => void (p.questions[0]!.targetsMisconception = null)),
-    'Topic "Batch obrada" has misconceptions from the student\'s notes but no question',
+    `Topic "Batch obrada" has misconceptions from the student's notes that no question targets: "${MISCONCEPTION}"`,
   ],
   [
     "open before closed",
@@ -154,6 +154,45 @@ describe("buildQuizPlannerMessage", () => {
     ]) {
       expect(message).toContain(s);
     }
+  });
+
+  it("includes the earlier lessons for the repeat candidates", () => {
+    const message = buildQuizPlannerMessage(ctxFixture());
+    expect(message).toContain('<ranija_lekcija predavanje="1">');
+    expect(message).toContain("Lake čuva sirove podatke, warehouse strukturirane.");
+    expect(
+      buildQuizPlannerMessage(ctxFixture({ earlierTopics: [], earlierLessons: [] })),
+    ).not.toContain("<ranija_lekcija");
+  });
+
+  it("lists the notes misconceptions per topic as exact texts", () => {
+    const ctx = ctxFixture();
+    ctx.topics[1]!.history = [
+      {
+        source: "notes",
+        ref: null,
+        outcome: null,
+        misconception: "Druga  zabluda",
+        correction: null,
+      },
+    ];
+    ctx.topics[0]!.history.push({
+      source: "notes",
+      ref: null,
+      outcome: null,
+      misconception: "Treća zabluda",
+      correction: null,
+    });
+    const message = buildQuizPlannerMessage(ctx);
+    expect(message).toContain(
+      `Tema "Batch obrada":\n  1. ${JSON.stringify(MISCONCEPTION)}\n  2. "Treća zabluda"`,
+    );
+    expect(message).toContain('Tema "Stream obrada":\n  1. "Druga  zabluda"');
+    // Deferred topics are not listed.
+    ctx.topics[2]!.history = [
+      { source: "notes", ref: null, outcome: null, misconception: "Odložena", correction: null },
+    ];
+    expect(buildQuizPlannerMessage(ctx)).not.toContain('Tema "Lambda arhitektura":');
   });
 
   it("includes the assessment format only when set", () => {
@@ -227,6 +266,72 @@ describe("quizPlanSchema", () => {
       { source: "notes", ref: null, outcome: "misconception", misconception: "X", correction: "Y" },
     ];
     expect(issuesOf(planFixture(), ctx)).toBe("");
+  });
+
+  describe("a topic name shared by this class and an earlier one", () => {
+    const sharedCtx = () => {
+      const ctx = ctxFixture();
+      ctx.earlierTopics.push({ ...ctx.earlierTopics[0]!, name: "Stream obrada" });
+      return ctx;
+    };
+
+    it("accepts it both as a current question and as a repeat", () => {
+      const plan = mutated((p) => {
+        // q6 becomes a repeat of the earlier "Stream obrada"; q2 stays a current question.
+        p.questions[5]!.topic = "Stream obrada";
+      });
+      expect(issuesOf(plan, sharedCtx())).toBe("");
+    });
+
+    it("still rejects isRepeat true on a name that is only a current topic", () => {
+      const plan = mutated((p) => void (p.questions[1]!.isRepeat = true));
+      expect(issuesOf(plan)).toContain("is not one of the earlier topics");
+    });
+
+    it("still rejects isRepeat false on a name that is only an earlier topic", () => {
+      const plan = mutated((p) => void (p.questions[5]!.isRepeat = false));
+      expect(issuesOf(plan, sharedCtx())).toContain("earlier class, so isRepeat must be true");
+    });
+  });
+
+  describe("misconception coverage", () => {
+    const SECOND = "Stream je uvek skuplji od batch obrade";
+    const twoCtx = () => {
+      const ctx = ctxFixture();
+      ctx.topics[0]!.history.push({
+        source: "notes",
+        ref: null,
+        outcome: "misconception",
+        misconception: SECOND,
+        correction: "Zavisi od opterećenja.",
+      });
+      return ctx;
+    };
+
+    it("rejects a plan that targets only one of two misconceptions of a topic", () => {
+      const issues = issuesOf(planFixture(), twoCtx());
+      expect(issues).toContain(`"${SECOND}"`);
+      expect(issues).not.toContain(JSON.stringify(MISCONCEPTION));
+      expect(issues).toContain("copied exactly");
+    });
+
+    it("accepts a plan that targets both", () => {
+      const plan = mutated((p) => void (p.questions[1]!.targetsMisconception = SECOND));
+      expect(issuesOf(plan, twoCtx())).toBe("");
+    });
+
+    it("compares after trimming, collapsing whitespace and case-folding", () => {
+      const plan = mutated((p) => {
+        p.questions[0]!.targetsMisconception = `  ${MISCONCEPTION.toUpperCase().replace(/ /g, "  ")} `;
+        p.questions[1]!.targetsMisconception = SECOND.toLowerCase();
+      });
+      expect(issuesOf(plan, twoCtx())).toBe("");
+    });
+
+    it("does not accept a targeted text that matches no misconception", () => {
+      const plan = mutated((p) => void (p.questions[0]!.targetsMisconception = "Nešto drugo"));
+      expect(issuesOf(plan)).toContain(JSON.stringify(MISCONCEPTION));
+    });
   });
 
   it("converts to a structured output schema", () => {

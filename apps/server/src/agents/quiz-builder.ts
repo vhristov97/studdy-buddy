@@ -8,7 +8,7 @@ import {
 } from "@studdy/shared";
 import { z } from "zod";
 import { config } from "../config.js";
-import type { NotesMisconception } from "../quiz/context.js";
+import type { EarlierLesson, NotesMisconception } from "../quiz/context.js";
 import { openStageSession, runStage, type StageSession, type StageSpec } from "./stage.js";
 
 export interface QuizBuilderOptions {
@@ -19,6 +19,8 @@ export interface QuizBuilderInput {
   plan: QuizPlan;
   lessonMd: string;
   notesMisconceptions: NotesMisconception[];
+  /** Lessons of earlier classes, the source for repeat questions (plan rows with isRepeat true). */
+  earlierLessons: EarlierLesson[];
 }
 
 const INSTRUCTION = `You are the quiz builder for a Serbian university course. A tutor (the planner) has written a quiz plan: for every question it fixes the topic, the type, the correct answer and where the answer sits. Your job is to turn that plan into the actual quiz that the student will take: the wording, the distractors, the explanations. The student never sees the plan. A reviewer will check your quiz against the plan and the lesson and may send you a list of fixes.
@@ -28,7 +30,8 @@ const INSTRUCTION = `You are the quiz builder for a Serbian university course. A
 You receive, in the user message:
 - the plan as JSON: the header (code, title, subtitle, chips) and one row per question (id, type, topic, angle, answer, keyPoints, mcOptionCount, mcCorrectIndex, ref, extra, targetsMisconception, isRepeat);
 - the lesson note (inside <lekcija>), the source of truth. Its tags: no tag = from the slides; (P) = the lecturer's spoken remark, authoritative; (D) = the tutor's addition;
-- the misconceptions found in the student's notes, each with the correction. They are the best distractors there are.
+- the misconceptions found in the student's notes, each with the correction. They are the best distractors there are;
+- when the plan has repeat questions (isRepeat true), the lessons of the earlier classes they come from (each inside <ranija_lekcija>). Use them as the source of truth for those questions; the ref of a repeat row names the earlier lesson ("Predavanje <N> › ..."). The quiz itself carries no isRepeat marker, so the reviewer identifies repeat questions through the plan and checks them against these earlier lessons.
 
 # What the plan fixes (never change it)
 
@@ -68,6 +71,14 @@ export function buildQuizBuilderInstruction(): string {
   return INSTRUCTION;
 }
 
+function earlierLessonSections(lessons: EarlierLesson[]): string[] {
+  return lessons.map(
+    (l) =>
+      `Ranija lekcija, predavanje ${l.classNumber}: ${l.title} (izvor za pitanja za ponavljanje)\n` +
+      `<ranija_lekcija predavanje="${l.classNumber}">\n${l.lessonMd}\n</ranija_lekcija>`,
+  );
+}
+
 export function buildQuizBuilderMessage(input: QuizBuilderInput): string {
   const misconceptions =
     input.notesMisconceptions.length > 0
@@ -79,6 +90,7 @@ export function buildQuizBuilderMessage(input: QuizBuilderInput): string {
   return [
     `Plan kviza (JSON):\n${JSON.stringify(input.plan, null, 2)}`,
     `<lekcija>\n${input.lessonMd}\n</lekcija>`,
+    ...earlierLessonSections(input.earlierLessons),
     misconceptions,
     `Napravi kviz ${input.plan.code} prema planu i uputstvu, i vrati {quiz, flags}.`,
   ].join("\n\n");
@@ -111,6 +123,21 @@ export function quizDraftSchema(plan: QuizPlan): z.ZodType<QuizDraft> {
 
     if (quiz.code !== plan.code) {
       issue(`quiz.code must be "${plan.code}", as in the plan.`, ["quiz", "code"]);
+    }
+    if (quiz.title !== plan.title) {
+      issue(`quiz.title must be "${plan.title}", as in the plan.`, ["quiz", "title"]);
+    }
+    if (quiz.subtitle !== plan.subtitle) {
+      issue(`quiz.subtitle must be "${plan.subtitle}", as in the plan.`, ["quiz", "subtitle"]);
+    }
+    if (
+      quiz.chips.length !== plan.chips.length ||
+      quiz.chips.some((chip, i) => chip !== plan.chips[i])
+    ) {
+      issue(
+        `quiz.chips must be exactly the plan's chips, in the same order: ${JSON.stringify(plan.chips)}.`,
+        ["quiz", "chips"],
+      );
     }
     if (quiz.questions.length !== plan.questions.length) {
       issue(
@@ -213,10 +240,11 @@ export async function buildQuiz(
   plan: QuizPlan,
   lessonMd: string,
   notesMisconceptions: NotesMisconception[],
+  earlierLessons: EarlierLesson[],
   opts: QuizBuilderOptions = {},
 ): Promise<QuizDraft> {
   return runStage(
     quizBuilderSpec(plan, opts),
-    buildQuizBuilderMessage({ plan, lessonMd, notesMisconceptions }),
+    buildQuizBuilderMessage({ plan, lessonMd, notesMisconceptions, earlierLessons }),
   );
 }

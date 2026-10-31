@@ -191,6 +191,20 @@ export function validateQuiz(input: unknown, opts: ValidateQuizOptions = {}): Qu
       if (!choicesOk) {
         err("match_choices", "A match question needs a non-empty choices array.", "choices");
       }
+      if (rowsOk) {
+        (q.rows as unknown[]).forEach((row, i) => {
+          if (!isNonEmptyString(row)) {
+            err("match_empty_row", `Row ${i} is empty or not a string.`, `rows[${i}]`);
+          }
+        });
+      }
+      if (choicesOk) {
+        (q.choices as unknown[]).forEach((choice, i) => {
+          if (!isNonEmptyString(choice)) {
+            err("match_empty_choice", `Choice ${i} is empty or not a string.`, `choices[${i}]`);
+          }
+        });
+      }
       const rowCount = rowsOk ? (q.rows as unknown[]).length : 0;
       const choiceCount = choicesOk ? (q.choices as unknown[]).length : 0;
       if (!Array.isArray(q.answer) || (rowsOk && q.answer.length !== rowCount)) {

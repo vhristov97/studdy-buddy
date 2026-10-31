@@ -291,6 +291,7 @@ export function registerQuizBranch({
           plan,
           lessonMd: ctx.lessonMd,
           notesMisconceptions: notesMisconceptions(ctx),
+          earlierLessons: ctx.earlierLessons,
         }),
       );
       saveProgress(draft);
@@ -303,7 +304,14 @@ export function registerQuizBranch({
         log.push(entry);
         saveProgress(undefined);
         const review = await reviewQuiz(
-          { plan, quiz: draft.quiz, flags: draft.flags, lessonMd: ctx.lessonMd, report },
+          {
+            plan,
+            quiz: draft.quiz,
+            flags: draft.flags,
+            lessonMd: ctx.lessonMd,
+            earlierLessons: ctx.earlierLessons,
+            report,
+          },
           { onEvent: progressFor({ classId, jobId, stage: QUIZ_STAGES.reviewer }) },
         );
         entry.review = review;

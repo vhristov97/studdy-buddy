@@ -16,7 +16,7 @@ You receive, in the user message:
 - the course name, the class number and title, the quiz code, and sometimes the course's assessment format;
 - the unified lesson note (inside <lekcija>), which is the source of truth. Its item tags: no tag = from the slides; (P) = the lecturer's spoken remark, authoritative and likely exam material; (D) = an addition by the lesson's author (the tutor). "> ⚠️ Ispravka:" callouts mark corrections of the student's notes;
 - the topics of this class, in lesson order, each with its rating (? = untested, ✗ = not understood, ~ = partly, ✓ = understood) and its history: misconceptions the student's notes contained (source "notes"), and how earlier quizzes and grading went (sources "quiz" and "grading"). Deferred topics are marked;
-- topics of earlier classes that are still weak (repeat candidates), with their history. The earlier lessons themselves are NOT provided;
+- topics of earlier classes that are still weak (repeat candidates), with their history, and the lessons of those earlier classes (each inside <ranija_lekcija>, with its class number), which are the source for repeat questions;
 - the backlog (topics that were left out of earlier quizzes and are due) and observations about the student, when there are any.
 
 # Language
@@ -37,9 +37,9 @@ Decide how many questions each topic gets and from which angle:
 - Untested topics (rating ?): cover broadly, weighted by importance. Slides and (P) remarks that signal exam relevance weigh more than side details.
 - Topics the student answered wrong before (history entries from sources "quiz" or "grading" with a misconception, or rating ✗/~): they get the MOST questions, and each is asked from a DIFFERENT angle than before (a new scenario, the question reversed, a rephrasing, a different concrete example). The goal is to learn the concept, not to memorize an earlier answer. A "Ne znam" (gap) is not a misconception: that concept is taught first, so ask it plainly and build up.
 - Topics answered correctly come back harder: application in a scenario, edge cases, comparison with a neighbouring concept.
-- Every misconception from the student's notes (history source "notes") gets at least one question in which that misconception is the main distractor. Set targetsMisconception on that row to the misconception text (the student's wording). The answer to such a row is the correction. Rows that are not built around a misconception have targetsMisconception null.
+- Every misconception from the student's notes (history source "notes") gets at least one question in which that misconception is the main distractor. The message lists these misconceptions explicitly, numbered per topic. Set targetsMisconception on that row to the misconception text copied exactly (character for character) from that list. Every listed misconception needs its own question: two misconceptions on one topic need two questions. The answer to such a row is the correction. Rows that are not built around a misconception have targetsMisconception null.
 - Deferred topics (the lecturer promised to cover them later) are NOT tested. List each in leftOut with the reason.
-- Repeats from earlier classes: pick the weakest earlier topics (a handful, about a quarter of the closed questions at most, fewer when there are few). Set isRepeat true on them and use a NEW angle. Because the earlier lesson text is not provided, base such a question on what the history says (the misconception and its correction) and on facts of the topic that you are certain about; do not invent details. Set ref to "Predavanje <classNumber> › <topic name>".
+- Repeats from earlier classes: pick the weakest earlier topics (a handful, about a quarter of the closed questions at most, fewer when there are few). Set isRepeat true on them and use a NEW angle. Base such a question on the earlier lesson (provided inside <ranija_lekcija>) together with the history (the misconception and its correction); never ask what you cannot verify from them. Set ref to "Predavanje <N> › <section path>", where N is the earlier class number and the section path is the heading path in that earlier lesson, separated by " › ".
 - Topics that do not fit in the quiz go to leftOut, each with a short reason (for example "ostalo bez pitanja zbog obima", "sporedna tema"). They are put on the backlog for the next cumulative review. Do not leave out a topic that has a notes misconception unless it is deferred.
 - Backlog items that are due in this quiz must be covered; treat them like repeats. Observations about the student tell you where to put emphasis (for example that calculations are weak, or that open answers skip enumerations).
 
@@ -54,7 +54,7 @@ Question ids are q1, q2, ... qN in exactly this order, with no gaps.
 
 - id: "q1".."qN" in order.
 - type: "mc", "num", "match" or "open".
-- topic: copied exactly (character for character) from a topic name in the user message. Questions about this class use this class's topic names; repeats use the earlier topic's name.
+- topic: copied exactly (character for character) from a topic name in the user message. Questions about this class use this class's topic names (isRepeat false); repeats use the earlier topic's name (isRepeat true). When a name occurs both in this class and among the earlier topics, either use is valid; isRepeat tells which one you mean.
 - angle: the scenario or angle in one or two sentences. Prefer a scenario (a team, a system, a command, a failure) to "what is X".
 - answer: the correct answer or key fact, as text. It must be exact and checkable against the lesson. For num: the value and unit. For match: the correct pairs. For open: a one-line summary of the model answer.
 - keyPoints: for open questions, everything a complete oral answer names, including the lecturer's enumerations, examples and analogies (at least 2 points; each a short statement). For all other types an empty list.
@@ -64,7 +64,7 @@ Question ids are q1, q2, ... qN in exactly this order, with no gaps.
 - extra: true when the question rests on (D) content, otherwise false.
 - targetsMisconception: see above, otherwise null.
 - isRepeat: true only for topics of earlier classes.
-Questions must stay inside the lesson. Never plan a question whose answer you cannot verify from the lesson (or, for repeats, from the history). Where the lesson contains a visible "⚠️ Ispravka" correction, the plan uses the corrected statement, never the wrong wording from the notes. Do not ask about ❓ items the student has not confirmed yet.
+Questions must stay inside the lesson. Never plan a question whose answer you cannot verify from the lesson (or, for repeats, from the earlier lesson and the history). Where the lesson contains a visible "⚠️ Ispravka" correction, the plan uses the corrected statement, never the wrong wording from the notes. Do not ask about ❓ items the student has not confirmed yet.
 
 # Header
 
@@ -78,7 +78,7 @@ The code must be exactly the code given in the user message.
 
 # Self-check before answering
 
-Count the questions per type and make sure typeMix matches. Check the ids, the order (closed, then repeats, then open), that every topic name is copied exactly, that every notes misconception is targeted, that no deferred topic is tested, and that the mc correct indices are varied.
+Count the questions per type and make sure typeMix matches. Check the ids, the order (closed, then repeats, then open), that every topic name is copied exactly, that every listed notes misconception is targeted by its own question with the text copied exactly, that no deferred topic is tested, and that the mc correct indices are varied.
 
 # Output
 
@@ -114,6 +114,30 @@ function formatTopic(topic: QuizTopicInput, index: number, classNumber?: number)
   return [head, ...lines].join("\n");
 }
 
+/** Normalizes misconception text for comparison: trimmed, whitespace collapsed, case-folded. */
+function normalizeText(text: string): string {
+  return text.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/** The notes misconceptions of the current, non-deferred topics that the quiz must target. */
+function requiredMisconceptions(ctx: QuizContext): { topic: string; texts: string[] }[] {
+  const result: { topic: string; texts: string[] }[] = [];
+  const seen = new Set<string>();
+  for (const topic of ctx.topics) {
+    if (topic.deferred) continue;
+    const texts: string[] = [];
+    for (const h of topic.history) {
+      if (h.source !== "notes" || h.misconception === null) continue;
+      const key = normalizeText(h.misconception);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      texts.push(h.misconception);
+    }
+    if (texts.length > 0) result.push({ topic: topic.name, texts });
+  }
+  return result;
+}
+
 export function buildQuizPlannerMessage(ctx: QuizContext): string {
   const header = [
     `Kurs: ${ctx.course.name}`,
@@ -124,14 +148,29 @@ export function buildQuizPlannerMessage(ctx: QuizContext): string {
     header.push(`Format ocenjivanja:\n${ctx.course.assessmentFormat}`);
   }
 
+  const required = requiredMisconceptions(ctx);
   const sections = [
     header.join("\n"),
     `<lekcija>\n${ctx.lessonMd}\n</lekcija>`,
     `Teme ovog predavanja (redom u lekciji), sa istorijom:\n${ctx.topics.map((t, i) => formatTopic(t, i)).join("\n")}`,
+    required.length > 0
+      ? "Zablude iz beleški studenta, svaka mora imati bar jedno pitanje; u targetsMisconception kopiraj tekst TAČNO kako je navedeno:\n" +
+        required
+          .map(
+            (r) =>
+              `Tema "${r.topic}":\n` +
+              r.texts.map((t, i) => `  ${i + 1}. ${JSON.stringify(t)}`).join("\n"),
+          )
+          .join("\n")
+      : "Student nema zabluda iz beleški za ovo predavanje.",
     ctx.earlierTopics.length > 0
-      ? "Teme iz ranijih predavanja koje su još slabe (kandidati za ponavljanje; same lekcije nisu priložene):\n" +
+      ? "Teme iz ranijih predavanja koje su još slabe (kandidati za ponavljanje; lekcije su priložene ispod):\n" +
         ctx.earlierTopics.map((t, i) => formatTopic(t, i, t.classNumber)).join("\n")
       : "Nema slabih tema iz ranijih predavanja za ponavljanje.",
+    ...ctx.earlierLessons.map(
+      (l) =>
+        `Ranija lekcija, predavanje ${l.classNumber}: ${l.title}\n<ranija_lekcija predavanje="${l.classNumber}">\n${l.lessonMd}\n</ranija_lekcija>`,
+    ),
     ctx.backlog.length > 0
       ? "Backlog (obavezno u ovom kvizu ako je dospeo):\n" +
         ctx.backlog.map((b) => `- ${b.topic} (obavezno u ${b.dueQuiz}): ${b.reason}`).join("\n")
@@ -150,6 +189,7 @@ export function buildQuizPlannerMessage(ctx: QuizContext): string {
  */
 export function quizPlanSchema(ctx: QuizContext): z.ZodType<QuizPlan> {
   const current = new Map(ctx.topics.map((t) => [t.name, t]));
+  const earlierNames = new Set(ctx.earlierTopics.map((t) => t.name));
   const validNames = [...new Set([...ctx.topics, ...ctx.earlierTopics].map((t) => t.name))];
 
   return QuizPlan.superRefine((plan, zctx) => {
@@ -180,16 +220,19 @@ export function quizPlanSchema(ctx: QuizContext): z.ZodType<QuizPlan> {
           at("topic"),
         );
       } else {
-        const expectedRepeat = !current.has(q.topic);
-        if (q.isRepeat !== expectedRepeat) {
+        if (q.isRepeat && !earlierNames.has(q.topic)) {
           issue(
-            expectedRepeat
-              ? `${q.id}: topic "${q.topic}" belongs to an earlier class, so isRepeat must be true.`
-              : `${q.id}: topic "${q.topic}" belongs to this class, so isRepeat must be false.`,
+            `${q.id}: isRepeat is true but topic "${q.topic}" is not one of the earlier topics ` +
+              "(repeat candidates); use an earlier topic's name or set isRepeat to false.",
+            at("isRepeat"),
+          );
+        } else if (!q.isRepeat && !current.has(q.topic)) {
+          issue(
+            `${q.id}: topic "${q.topic}" belongs to an earlier class, so isRepeat must be true.`,
             at("isRepeat"),
           );
         }
-        if (current.get(q.topic)?.deferred) {
+        if (!q.isRepeat && current.get(q.topic)?.deferred) {
           issue(
             `${q.id}: topic "${q.topic}" is deferred and must not be tested. Remove the question ` +
               "and list the topic in leftOut.",
@@ -248,18 +291,18 @@ export function quizPlanSchema(ctx: QuizContext): z.ZodType<QuizPlan> {
       }
     }
 
-    for (const topic of ctx.topics) {
-      if (topic.deferred) continue;
-      const wrong = topic.history.filter((h) => h.source === "notes" && h.misconception !== null);
-      if (wrong.length === 0) continue;
-      const covered = plan.questions.some(
-        (q) => q.topic === topic.name && q.targetsMisconception !== null,
-      );
-      if (!covered) {
+    const targeted = new Set(
+      plan.questions.flatMap((q) =>
+        q.targetsMisconception === null ? [] : [normalizeText(q.targetsMisconception)],
+      ),
+    );
+    for (const { topic, texts } of requiredMisconceptions(ctx)) {
+      const uncovered = texts.filter((t) => !targeted.has(normalizeText(t)));
+      if (uncovered.length > 0) {
         issue(
-          `Topic "${topic.name}" has misconceptions from the student's notes but no question ` +
-            "targets one. Add a question on this topic with targetsMisconception set to the " +
-            `misconception text (${wrong.map((h) => quote(h.misconception ?? "")).join("; ")}).`,
+          `Topic "${topic}" has misconceptions from the student's notes that no question targets: ` +
+            `${uncovered.map((t) => JSON.stringify(t)).join("; ")}. Add a question for each, with ` +
+            "targetsMisconception set to the misconception text copied exactly.",
           ["questions"],
         );
       }

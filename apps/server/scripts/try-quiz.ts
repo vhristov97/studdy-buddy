@@ -84,6 +84,7 @@ try {
           plan,
           lessonMd: ctx.lessonMd,
           notesMisconceptions: notesMisconceptions(ctx),
+          earlierLessons: ctx.earlierLessons,
         }),
       )
       .finally(() => session.close()),
@@ -92,7 +93,14 @@ try {
   const report = validateQuiz(draft.quiz);
   const review = await timed("Reviewing", () =>
     reviewQuiz(
-      { plan, quiz: draft.quiz, flags: draft.flags, lessonMd: ctx.lessonMd, report },
+      {
+        plan,
+        quiz: draft.quiz,
+        flags: draft.flags,
+        lessonMd: ctx.lessonMd,
+        earlierLessons: ctx.earlierLessons,
+        report,
+      },
       { onEvent },
     ),
   );

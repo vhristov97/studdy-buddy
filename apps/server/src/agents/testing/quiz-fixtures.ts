@@ -55,6 +55,13 @@ export function ctxFixture(overrides: Partial<QuizContext> = {}): QuizContext {
         ],
       },
     ],
+    earlierLessons: [
+      {
+        classNumber: 1,
+        title: "Skladišta",
+        lessonMd: "## Skladišta podataka\n\n- Lake čuva sirove podatke, warehouse strukturirane.",
+      },
+    ],
     backlog: [],
     observations: [],
     ...overrides,

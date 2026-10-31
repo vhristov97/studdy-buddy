@@ -101,6 +101,31 @@ const bad: [string, () => QuizDraft, string][] = [
     'ref must be "Obrada › Primer" as planned',
   ],
   [
+    "a changed title",
+    () => mutated((d) => void (d.quiz.title = "Drugi naslov")),
+    'quiz.title must be "Obrada podataka"',
+  ],
+  [
+    "a changed subtitle",
+    () => mutated((d) => void (d.quiz.subtitle = "Drugi podnaslov")),
+    'quiz.subtitle must be "Predavanje 2"',
+  ],
+  [
+    "a changed chip",
+    () => mutated((d) => void (d.quiz.chips[1] = "9 pitanja")),
+    "quiz.chips must be exactly the plan's chips",
+  ],
+  [
+    "reordered chips",
+    () => mutated((d) => void d.quiz.chips.reverse()),
+    "quiz.chips must be exactly the plan's chips",
+  ],
+  [
+    "an extra chip",
+    () => mutated((d) => void d.quiz.chips.push("Dodatno")),
+    "quiz.chips must be exactly the plan's chips",
+  ],
+  [
     "a changed extra flag",
     () => mutated((d) => void (d.quiz.questions[1]!.extra = true)),
     "extra must be false as planned",
@@ -136,10 +161,29 @@ describe("buildQuizBuilderMessage", () => {
       plan: planFixture(),
       lessonMd: "LEKCIJA-TEKST",
       notesMisconceptions: [{ topic: "Batch obrada", claim: "ZABLUDA", correction: "ISPRAVKA" }],
+      earlierLessons: [{ classNumber: 1, title: "Skladišta", lessonMd: "RANIJA-LEKCIJA-TEKST" }],
     });
-    for (const s of ['"code": "P02"', "mcCorrectIndex", "LEKCIJA-TEKST", "ZABLUDA", "ISPRAVKA"]) {
+    for (const s of [
+      '"code": "P02"',
+      "mcCorrectIndex",
+      "LEKCIJA-TEKST",
+      "ZABLUDA",
+      "ISPRAVKA",
+      "RANIJA-LEKCIJA-TEKST",
+      '<ranija_lekcija predavanje="1">',
+    ]) {
       expect(message).toContain(s);
     }
+  });
+
+  it("has no earlier lesson section when there are no earlier lessons", () => {
+    const message = buildQuizBuilderMessage({
+      plan: planFixture(),
+      lessonMd: "L",
+      notesMisconceptions: [],
+      earlierLessons: [],
+    });
+    expect(message).not.toContain("<ranija_lekcija");
   });
 
   it("says when there are no notes misconceptions", () => {
@@ -147,6 +191,7 @@ describe("buildQuizBuilderMessage", () => {
       plan: planFixture(),
       lessonMd: "L",
       notesMisconceptions: [],
+      earlierLessons: [],
     });
     expect(message).toContain("nema zabluda iz beleški");
   });
@@ -259,14 +304,14 @@ describe("quiz builder with FakeRunner (no API)", () => {
 
   it("returns the parsed draft on the builder model", async () => {
     queue = [fakeJsonAnswer(draftFixture())];
-    await expect(buildQuiz(planFixture(), "Lekcija", [])).resolves.toEqual(draftFixture());
+    await expect(buildQuiz(planFixture(), "Lekcija", [], [])).resolves.toEqual(draftFixture());
     expect(inner.calls).toHaveLength(1);
     expect(inner.calls[0]!.model).toBe(config.MODEL_BUILDER);
   });
 
   it.each(bad)("repairs %s", async (_label, make) => {
     queue = [fakeJsonAnswer(make()), fakeJsonAnswer(draftFixture())];
-    await expect(buildQuiz(planFixture(), "Lekcija", [])).resolves.toEqual(draftFixture());
+    await expect(buildQuiz(planFixture(), "Lekcija", [], [])).resolves.toEqual(draftFixture());
     expect(inner.calls).toHaveLength(2);
   });
 
@@ -282,6 +327,7 @@ describe("quiz builder with FakeRunner (no API)", () => {
           plan: planFixture(),
           lessonMd: "Lekcija",
           notesMisconceptions: [],
+          earlierLessons: [],
         }),
       );
       expect(built).toEqual(draftFixture());
