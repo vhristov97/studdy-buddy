@@ -122,9 +122,9 @@ Dependencies: M0 → M1 → M2 → M3, then M4 ∥ M7 (M5 can start once the M4 
 - [x] M6.3 Progress page: Sledeće, backlog, topic mastery overview, quiz history with results write-ups, viz registry, cumulative schedule. Session-start flags: classes with materials but no lesson, ungraded submissions, a due cumulative test (§14).
 
 ### M7: Visualization branch
-- [ ] M7.1 viz-identifier prompt (spoiler-free suggestions), suggestion persistence, selection UI (multi-select + custom topic).
-- [ ] M7.2 viz-planner, viz-builder and viz-reviewer prompts. Design contract checks (title, themes, phone width, no external deps, optional storage). Per-viz review loop, failure + regeneration.
-- [ ] M7.3 Viz serving at `/viz/:id` with a strict CSP in a sandboxed iframe, links from the lesson and the registry.
+- [x] M7.1 viz-identifier prompt (spoiler-free suggestions), suggestion persistence, selection UI (multi-select + custom topic).
+- [x] M7.2 viz-planner, viz-builder and viz-reviewer prompts. Design contract checks (title, themes, phone width, no external deps, optional storage). Per-viz review loop, failure + regeneration.
+- [x] M7.3 Viz serving at `/viz/:id` with a strict CSP in a sandboxed iframe, links from the lesson and the registry.
 
 ### M8: Cumulative reviews
 - [ ] M8.1 Cadence detection: offer `K<n>` when the class count reaches the cadence. The planner input is the covered lessons + backlog items due for that K + weak topics. It reuses the M4 build/review loop. Results go to the schedule and quiz history.

@@ -46,6 +46,17 @@ const progress = (over: Partial<CourseProgress> = {}): CourseProgress => ({
     },
   ],
   quizHistory: [entry()],
+  visualizations: [
+    {
+      id: 5,
+      title: "Replikacija korak po korak",
+      classNumber: 2,
+      className: "Kafka",
+      concept: "Replikacija",
+      misconception: "Replikacija je isto što i particionisanje",
+      createdAt: new Date(2026, 0, 4, 10, 0).toISOString(),
+    },
+  ],
   observations: ["Meša pojmove replikacije i particionisanja."],
   flags: { classesWithoutLesson: [], ungradedSubmissions: [] },
   ...over,
@@ -166,6 +177,15 @@ describe("ProgressPage", () => {
     expect(history.getByText("auto 2,5/4 + otvorena 1,4")).toBeInTheDocument();
     expect(history.getByText("Ukupno: 3,9")).toBeInTheDocument();
 
+    const viz = within(section("Vizualizacije"));
+    expect(viz.getByRole("link", { name: "Replikacija korak po korak" })).toHaveAttribute(
+      "href",
+      "/vizualizacije/5",
+    );
+    expect(viz.getByText("Predavanje 02 · Kafka")).toBeInTheDocument();
+    expect(viz.getByText("Replikacija")).toBeInTheDocument();
+    expect(viz.getByText("Cilj: Replikacija je isto što i particionisanje")).toBeInTheDocument();
+
     const observations = within(section("Zapažanja"));
     expect(observations.getByText(/Meša pojmove/)).toBeInTheDocument();
     expect(observations.getByText(/zajednička za sve kurseve/)).toBeInTheDocument();
@@ -190,13 +210,25 @@ describe("ProgressPage", () => {
   });
 
   it("shows an empty state for every section", async () => {
-    open(progress({ nextSteps: [], backlog: [], topics: [], quizHistory: [], observations: [] }));
+    open(
+      progress({
+        nextSteps: [],
+        backlog: [],
+        topics: [],
+        quizHistory: [],
+        visualizations: [],
+        observations: [],
+      }),
+    );
     await screen.findByRole("heading", { level: 1, name: "Napredak" });
     expect(within(section("Sledeće")).getByText(/Još nema predloga/)).toBeInTheDocument();
     expect(within(section("Obavezno u K…")).getByText(/Nema obaveznih tema/)).toBeInTheDocument();
     expect(within(section("Pregled tema")).getByText(/Još nema tema/)).toBeInTheDocument();
     expect(
       within(section("Istorija kvizova")).getByText("Još nema predatih kvizova."),
+    ).toBeInTheDocument();
+    expect(
+      within(section("Vizualizacije")).getByText("Još nema vizualizacija."),
     ).toBeInTheDocument();
     expect(within(section("Zapažanja")).getByText(/Još nema zapažanja/)).toBeInTheDocument();
   });

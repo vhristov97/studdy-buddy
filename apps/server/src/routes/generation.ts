@@ -65,6 +65,22 @@ export const generationRoutes: FastifyPluginAsync<GenerationRouteOptions> = asyn
     },
   );
 
+  app.post<{ Params: ClassParams }>(
+    "/api/classes/:classId/viz-topics/regenerate",
+    async (request, reply) => {
+      const classId = parseId("classId", request.params.classId);
+      return reply.code(202).send(pipeline.requestVizTopicsRegeneration(classId));
+    },
+  );
+
+  app.post<{ Params: { suggestionId: string } }>(
+    "/api/viz-suggestions/:suggestionId/regenerate",
+    async (request, reply) => {
+      const suggestionId = parseId("suggestionId", request.params.suggestionId);
+      return reply.code(202).send(pipeline.requestVizRegeneration(suggestionId));
+    },
+  );
+
   const openStreams = new Set<() => void>();
   // Without this, `app.close()` would wait forever for the open event streams. It has to be
   // `preClose`: `onClose` hooks only run after the server has closed, i.e. after the streams end.

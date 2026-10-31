@@ -14,6 +14,7 @@ import { materialRoutes } from "./routes/materials.js";
 import { progressRoutes } from "./routes/progress.js";
 import { quizRoutes } from "./routes/quizzes.js";
 import { submissionRoutes } from "./routes/submissions.js";
+import { vizRoutes } from "./routes/viz.js";
 import type { Pipeline } from "./pipeline/pipeline.js";
 
 export interface AppDeps {
@@ -46,6 +47,7 @@ export function buildApp({
   app.register(quizRoutes, { db });
   app.register(progressRoutes, { db });
   app.register(submissionRoutes, { db, ...(coordinator && { coordinator }) });
+  app.register(vizRoutes, { db, ...(coordinator && { coordinator }) });
   app.register(generationRoutes, {
     db,
     ...(pipeline && { pipeline }),
@@ -63,6 +65,11 @@ export function buildApp({
       return reply
         .code(404)
         .send(errorBody("not_found", `Route ${request.method}:${request.url} not found`));
+    }
+    // A visualization that does not exist is a plain 404, never the app shell (the iframe and
+    // "open in a new window" would show a nested app).
+    if (pathname === "/viz" || pathname.startsWith("/viz/")) {
+      return reply.code(404).send(errorBody("not_found", "Visualization not found"));
     }
     // Only navigation requests (no file extension in the last segment) get the SPA shell;
     // missing assets such as /assets/index-oldhash.js must stay 404s.

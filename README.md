@@ -16,8 +16,9 @@ Proof of concept, in progress.
 | M4 Quiz branch (planner, builder, review loop) | done |
 | M5 Quiz player and submissions | done |
 | M6 Grading and progress | done |
-| M7 Visualizations | in progress (parallel branch) |
-| M8 Cumulative reviews · M9 Import/export | planned |
+| M7 Visualizations | done |
+| M8 Cumulative reviews | next |
+| M9 Import/export | planned |
 
 What works today:
 
@@ -45,6 +46,10 @@ What works today:
   - topic ratings, the backlog („Obavezno u K…"), the „Sledeće" list and cross-course observations are updated in one transaction;
   - a results write-up is shown on the submission.
 - Course progress page (`Napredak`): session-start flags (classes without a lesson, ungraded submissions), „Sledeće", backlog, topic mastery overview, quiz history and observations.
+- Visualizations (spec §12), never built unasked:
+  - after the lesson, an agent suggests 2–4 concepts that are easier to grasp interactively, each with a spoiler-free summary, the misconception it breaks, controls and scenarios; you can add your own topic;
+  - for each topic you select (in parallel): a planner fixes the scenarios and the end state each must reach, a builder writes one self-contained HTML page, and the planner reviews it (up to 3 fix rounds) after an automatic design-contract check (title, light/dark, phone width, no external dependencies);
+  - pages are served from `/viz/:id` with a strict CSP in a sandboxed iframe and linked from the lesson and the course page; a failed one can be rebuilt from scratch.
 
 ## Stack
 

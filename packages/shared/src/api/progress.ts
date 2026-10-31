@@ -45,6 +45,20 @@ export const ProgressQuizHistoryEntry = z.object({
 });
 export type ProgressQuizHistoryEntry = z.infer<typeof ProgressQuizHistoryEntry>;
 
+export const ProgressVisualizationEntry = z.object({
+  id: z.number().int(),
+  title: z.string(),
+  classNumber: z.number().int(),
+  className: z.string(),
+  /** From the visualization's suggestion; null when the suggestion was deleted. */
+  concept: z.string().nullable(),
+  /** The misconception it targets; null when the suggestion was deleted. */
+  misconception: z.string().nullable(),
+  /** ISO 8601. */
+  createdAt: z.string(),
+});
+export type ProgressVisualizationEntry = z.infer<typeof ProgressVisualizationEntry>;
+
 export const ProgressFlags = z.object({
   /** Draft or failed classes with at least one usable class material and no lesson. */
   classesWithoutLesson: z.array(
@@ -67,7 +81,7 @@ export const ProgressFlags = z.object({
 });
 export type ProgressFlags = z.infer<typeof ProgressFlags>;
 
-/** `GET /api/courses/:courseId/progress`. The visualization registry and review schedule come later. */
+/** `GET /api/courses/:courseId/progress`. The review schedule comes later. */
 export const CourseProgress = z.object({
   /** The "Sledeće" list, in order. */
   nextSteps: z.array(z.string()),
@@ -76,6 +90,8 @@ export const CourseProgress = z.object({
   topics: z.array(ProgressTopic),
   /** Newest first. */
   quizHistory: z.array(ProgressQuizHistoryEntry),
+  /** The visualization registry, newest first. */
+  visualizations: z.array(ProgressVisualizationEntry),
   /** Cross-course, newest first. */
   observations: z.array(z.string()),
   flags: ProgressFlags,

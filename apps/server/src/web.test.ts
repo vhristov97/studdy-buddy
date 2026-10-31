@@ -90,6 +90,22 @@ describe("web app serving", () => {
       expect(res.json()).toEqual({ status: "ok", db: "ok" });
     });
 
+    it.each(["/viz/999", "/viz/", "/viz/1/extra"])(
+      "does not serve the app shell for %s",
+      async (url) => {
+        const res = await build(dist).inject({ method: "GET", url });
+        expect(res.statusCode).toBe(404);
+        expect(res.body).not.toBe(INDEX_HTML);
+        expect(res.json()).toMatchObject({ error: { code: "not_found" } });
+      },
+    );
+
+    it("falls back to index.html for the client route /vizualizacije/1", async () => {
+      const res = await build(dist).inject({ method: "GET", url: "/vizualizacije/1" });
+      expect(res.statusCode).toBe(200);
+      expect(res.body).toBe(INDEX_HTML);
+    });
+
     it("returns 404 for non-GET requests to unknown routes", async () => {
       const res = await build(dist).inject({ method: "POST", url: "/some/route" });
       expect(res.statusCode).toBe(404);

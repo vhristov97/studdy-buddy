@@ -10,6 +10,14 @@ export const DOMAIN_EVENTS = {
   QUIZ_REQUESTED: "quiz.requested",
   /** Payload `QuizReleasedPayload`: the quiz passed review and is in the library. */
   QUIZ_RELEASED: "quiz.released",
+  /** Payload `VizTopicsRequestedPayload`: starts the viz-identifier for a `viz_topics` job. */
+  VIZ_TOPICS_REQUESTED: "viz.topics_requested",
+  /** Payload `VizSelectedPayload`: the student picked suggestions to build; one `viz` job starts per suggestion. */
+  VIZ_SELECTED: "viz.selected",
+  /** Payload `VizRequestedPayload`: starts the viz planner, builder and reviewer for a `viz` job. */
+  VIZ_REQUESTED: "viz.requested",
+  /** Payload `VizReleasedPayload`: the visualization passed review and is in the library. */
+  VIZ_RELEASED: "viz.released",
   /** Payload `SubmissionCreatedPayload`: a quiz submission was saved; the grading branch reacts to it. */
   SUBMISSION_CREATED: "submission.created",
   /** Payload `GradingRequestedPayload`: starts the grader for a grading job. */
@@ -41,6 +49,28 @@ export interface QuizReleasedPayload {
   classId: number;
   quizId: number;
   code: string;
+}
+
+export interface VizTopicsRequestedPayload {
+  classId: number;
+  jobId: number;
+}
+
+export interface VizSelectedPayload {
+  classId: number;
+  suggestionIds: number[];
+}
+
+export interface VizRequestedPayload {
+  classId: number;
+  jobId: number;
+  suggestionId: number;
+}
+
+export interface VizReleasedPayload {
+  classId: number;
+  visualizationId: number;
+  suggestionId: number;
 }
 
 export interface SubmissionCreatedPayload {

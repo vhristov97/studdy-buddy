@@ -13,6 +13,8 @@ import {
   submission,
   topic,
   topicEvent,
+  visualization,
+  vizSuggestion,
 } from "../db/schema.js";
 import { gradingStateOf } from "./grading.js";
 
@@ -146,6 +148,23 @@ export function getCourseProgress(db: Db, courseId: number): CourseProgress {
       totalScore: r?.totalScore ?? null,
       gradingStatus: gradingStateOf(db, s.id).status,
     })),
+    visualizations: db
+      .select({
+        id: visualization.id,
+        title: visualization.title,
+        classNumber: classTable.number,
+        className: classTable.title,
+        concept: vizSuggestion.concept,
+        misconception: vizSuggestion.misconception,
+        createdAt: visualization.createdAt,
+      })
+      .from(visualization)
+      .innerJoin(classTable, eq(classTable.id, visualization.classId))
+      .leftJoin(vizSuggestion, eq(vizSuggestion.id, visualization.suggestionId))
+      .where(eq(classTable.courseId, courseId))
+      .orderBy(desc(visualization.id))
+      .all()
+      .map((v) => ({ ...v, createdAt: v.createdAt.toISOString() })),
     observations: db
       .select({ text: learnerObservation.text })
       .from(learnerObservation)

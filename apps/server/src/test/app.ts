@@ -28,6 +28,8 @@ export interface TestAppOptions {
     | "quizAutoStart"
     | "gradeSubmission"
     | "gradingAutoStart"
+    | "vizAgents"
+    | "vizAutoStart"
     | "progressIntervalMs"
   >;
 }

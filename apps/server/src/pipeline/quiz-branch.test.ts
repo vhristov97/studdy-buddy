@@ -102,6 +102,7 @@ describe("quiz branch", () => {
           throw new Error("not used");
         },
         quizAgents: { planQuiz: plan, openQuizBuilderSession: open, reviewQuiz: review },
+        vizAutoStart: false,
       },
     });
     events = [];

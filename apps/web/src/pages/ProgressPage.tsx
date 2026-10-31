@@ -5,6 +5,7 @@ import type {
   GradingStatus,
   ProgressBacklogItem,
   ProgressQuizHistoryEntry,
+  ProgressVisualizationEntry,
 } from "@studdy/shared";
 import { useCourse, useCourseProgress, useGradeSubmission } from "../api/hooks";
 import { Breadcrumbs } from "../components/Breadcrumbs";
@@ -67,6 +68,9 @@ function ProgressView({ progress }: { progress: CourseProgress }) {
       </Section>
       <Section id="history" title="Istorija kvizova">
         <History entries={progress.quizHistory} />
+      </Section>
+      <Section id="visualizations" title="Vizualizacije">
+        <Visualizations entries={progress.visualizations} />
       </Section>
       <Section id="observations" title="Zapažanja">
         <Observations observations={progress.observations} />
@@ -290,6 +294,29 @@ function History({ entries }: { entries: ProgressQuizHistoryEntry[] }) {
               <strong>Ukupno: {formatDecimal(entry.totalScore)}</strong>
             )}
           </p>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Visualizations({ entries }: { entries: ProgressVisualizationEntry[] }) {
+  if (entries.length === 0) return <EmptyState message="Još nema vizualizacija." />;
+  return (
+    <ul className={styles.history}>
+      {entries.map((entry) => (
+        <li key={entry.id} className={styles.historyItem}>
+          <div className={styles.historyHead}>
+            <Link to={`/vizualizacije/${entry.id}`}>
+              <strong>{entry.title}</strong>
+            </Link>
+            <span className={styles.muted}>{formatDateTime(entry.createdAt)}</span>
+          </div>
+          <p className={styles.muted}>
+            Predavanje {formatClassNumber(entry.classNumber)} · {entry.className}
+          </p>
+          {entry.concept && <p className={styles.vizConcept}>{entry.concept}</p>}
+          {entry.misconception && <p className={styles.muted}>Cilj: {entry.misconception}</p>}
         </li>
       ))}
     </ul>

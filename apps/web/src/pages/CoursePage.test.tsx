@@ -2,7 +2,14 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { ClassSummary } from "@studdy/shared";
-import { apiError, course, courseDetail, mockApi, renderAt } from "../test/utils";
+import {
+  apiError,
+  course,
+  courseDetail,
+  courseVisualization,
+  mockApi,
+  renderAt,
+} from "../test/utils";
 
 const summary = (
   id: number,
@@ -204,5 +211,42 @@ describe("CoursePage", () => {
         "Još nema kvizova. Kviz se pravi automatski posle objedinjenih beleški.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("lists the visualizations of all classes with a link", async () => {
+    mockApi({
+      ...courseRoutes(),
+      "GET /api/courses/1/visualizations": () => [
+        courseVisualization({
+          id: 7,
+          title: "Sharding pod lupom",
+          classNumber: 1,
+          className: "Uvod",
+        }),
+        courseVisualization({
+          id: 8,
+          title: "Kontejner iznutra",
+          classNumber: 2,
+          className: "Kontejneri",
+        }),
+      ],
+    });
+    renderAt("/kursevi/1");
+    expect(
+      await screen.findByRole("heading", { level: 2, name: "Vizualizacije" }),
+    ).toBeInTheDocument();
+    const link = await screen.findByRole("link", { name: "Sharding pod lupom" });
+    expect(link).toHaveAttribute("href", "/vizualizacije/7");
+    expect(link.closest("li")).toHaveTextContent("01 — Uvod");
+    expect(screen.getByRole("link", { name: "Kontejner iznutra" })).toHaveAttribute(
+      "href",
+      "/vizualizacije/8",
+    );
+  });
+
+  it("explains when the course has no visualizations yet", async () => {
+    mockApi({ ...courseRoutes(), "GET /api/courses/1/visualizations": () => [] });
+    renderAt("/kursevi/1");
+    expect(await screen.findByText(/Još nema vizualizacija/)).toBeInTheDocument();
   });
 });

@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { ClassStatus } from "./courses";
 
-/** What a generation job does. Later milestones add `viz_topics` and `viz`. */
-export const JOB_KINDS = ["lesson", "quiz", "grading"] as const;
+/** What a generation job does. `viz` builds one visualization (one job per selected suggestion). */
+export const JOB_KINDS = ["lesson", "quiz", "grading", "viz_topics", "viz"] as const;
 export const JobKind = z.enum(JOB_KINDS);
 export type JobKind = z.infer<typeof JobKind>;
 
@@ -32,10 +32,12 @@ export const GenerationJob = z.object({
   /** 1 for the first run, +1 for every retry after a failure. */
   attempt: z.number().int(),
   error: z.string().nullable(),
-  /** Review cycle (from 1) of a running or finished `quiz` job; null before the first review and for other kinds. */
+  /** Review cycle (from 1) of a running or finished `quiz`/`viz` job; null before the first review and for other kinds. */
   cycle: z.number().int().nullable(),
   /** The submission a `grading` job grades; null for other kinds. */
   submissionId: z.number().int().nullable(),
+  /** The visualization suggestion a `viz` job builds; null for other kinds. */
+  suggestionId: z.number().int().nullable(),
   /** ISO 8601. */
   createdAt: z.string(),
   /** ISO 8601; null while running. */

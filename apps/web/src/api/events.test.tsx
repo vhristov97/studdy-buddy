@@ -161,4 +161,25 @@ describe("useClassEvents", () => {
     expect(stale(client, queryKeys.lesson(5))).toBe(true);
     expect(stale(client, queryKeys.courses)).toBe(true);
   });
+
+  it("puts streamed jobs in the jobs query cache, newest first", () => {
+    vi.stubGlobal("EventSource", FakeEventSource);
+    const { client } = setup();
+    const source = FakeEventSource.instances[0]!;
+    act(() => {
+      source.emit(
+        "job",
+        jobEvent({ id: 3, kind: "viz", suggestionId: 1, stage: "viz-planner" }, "ready"),
+      );
+      source.emit(
+        "job",
+        jobEvent({ id: 3, kind: "viz", suggestionId: 1, stage: "viz-builder" }, "ready"),
+      );
+    });
+    const cached = client.getQueryData<GenerationJob[]>(queryKeys.classJobs(5))!;
+    expect(cached.map((j) => [j.id, j.stage])).toEqual([
+      [3, "viz-builder"],
+      [1, "lesson-writer"],
+    ]);
+  });
 });
