@@ -6,7 +6,7 @@ import { Coordinator } from "../agents/coordinator.js";
 import { buildApp } from "../app.js";
 import { loadConfig } from "../config.js";
 import { migrate, openDatabase, type DatabaseHandle } from "../db/client.js";
-import { createPipeline, type Pipeline, type WriteLesson } from "../pipeline/pipeline.js";
+import { createPipeline, type Pipeline, type PipelineOptions } from "../pipeline/pipeline.js";
 
 export interface TestApp {
   app: FastifyInstance;
@@ -21,7 +21,10 @@ export interface TestApp {
 
 export interface TestAppOptions {
   /** Adds a coordinator and pipeline (and so the generate routes). The agent runtime must be initialized. */
-  pipeline?: { writeLesson?: WriteLesson; progressIntervalMs?: number };
+  pipeline?: Pick<
+    PipelineOptions,
+    "writeLesson" | "quizAgents" | "quizAutoStart" | "progressIntervalMs"
+  >;
 }
 
 /** A fresh app on a migrated SQLite database in a temp dir. */

@@ -1,8 +1,9 @@
 import type { GenerationJob, JobKind } from "@studdy/shared";
 
-/** Stage label per job kind. M4 adds the quiz kinds, M7 the visualization ones. */
+/** Stage label per job kind. M7 adds the visualization ones. */
 export const JOB_KIND_LABELS: Record<JobKind, string> = {
   lesson: "Objedinjene beleške",
+  quiz: "Kviz",
 };
 
 /**
