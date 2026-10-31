@@ -36,6 +36,11 @@ export function createDefaultInferenceRunner(): InferenceRunner {
 
 const TELEMETRY_KEYS = ["MOZAIK_API_KEY", "MOZAIK_PROJECT_KEY"] as const;
 
+/** Set to a truthy value to deliberately enable Mozaik cloud telemetry. */
+export const CLOUD_OPT_IN_KEY = "MOZAIK_CLOUD_ENABLED";
+
+const TRUTHY = new Set(["1", "true", "yes", "on"]);
+
 export interface TelemetryGuardOptions {
   env?: NodeJS.ProcessEnv;
   cwd?: string;
@@ -47,21 +52,33 @@ export interface TelemetryGuardOptions {
  * `@mozaik-ai/core` bundles a cloud SDK that uploads every event, including full agent
  * memory (study materials), to app.jigjoy.ai when a key is found. Refuse to start if one is
  * configured in `env`, in `<cwd>/.env` (which the SDK also reads) or in `<repoRoot>/.env`
- * (checked explicitly so the guard does not depend on `config.ts` having loaded it). Also
- * points the SDK's paired-credentials lookup at `os.devNull`: it does
+ * (checked explicitly so the guard does not depend on `config.ts` having loaded it) —
+ * unless `MOZAIK_CLOUD_ENABLED` is truthy, which is the explicit opt-in. The flag resolves
+ * like `process.loadEnvFile`: `env` wins over `<cwd>/.env`, which wins over
+ * `<repoRoot>/.env`, so an explicit `MOZAIK_CLOUD_ENABLED=false` in the environment
+ * overrides an opt-in in a `.env` file. Also points the SDK's paired-credentials lookup
+ * at `os.devNull`: it does
  * `JSON.parse(readFileSync(file))`, which throws on the empty read and is caught as "no
  * credentials". A file in `os.tmpdir()` would not do, since anyone can plant one there.
  */
 export function assertTelemetryDisabled(options: TelemetryGuardOptions = {}): void {
   const { env = process.env, cwd = process.cwd(), repoRoot = REPO_ROOT } = options;
+  const envFiles = new Set([path.join(cwd, ".env"), path.join(repoRoot, ".env")]);
+  const parsedFiles = new Map<string, Record<string, string | undefined>>();
+  for (const envFile of envFiles) {
+    if (!fs.existsSync(envFile)) continue;
+    parsedFiles.set(envFile, parseEnv(fs.readFileSync(envFile, "utf8")));
+  }
+  const flagValue =
+    env[CLOUD_OPT_IN_KEY] ??
+    parsedFiles.get(path.join(cwd, ".env"))?.[CLOUD_OPT_IN_KEY] ??
+    parsedFiles.get(path.join(repoRoot, ".env"))?.[CLOUD_OPT_IN_KEY];
+  if (TRUTHY.has(flagValue?.trim().toLowerCase() ?? "")) return;
   const found: string[] = [];
   for (const key of TELEMETRY_KEYS) {
     if (env[key]?.trim()) found.push(`${key} (environment)`);
   }
-  const envFiles = new Set([path.join(cwd, ".env"), path.join(repoRoot, ".env")]);
-  for (const envFile of envFiles) {
-    if (!fs.existsSync(envFile)) continue;
-    const parsed = parseEnv(fs.readFileSync(envFile, "utf8"));
+  for (const [envFile, parsed] of parsedFiles) {
     for (const key of TELEMETRY_KEYS) {
       if (parsed[key]?.trim()) found.push(`${key} (${envFile})`);
     }
@@ -69,7 +86,8 @@ export function assertTelemetryDisabled(options: TelemetryGuardOptions = {}): vo
   if (found.length > 0) {
     throw new Error(
       `Mozaik cloud telemetry would upload all agent events, including study materials, to ` +
-        `app.jigjoy.ai. Remove ${found.join(", ")} and start again.`,
+        `app.jigjoy.ai. Remove ${found.join(", ")} and start again, or set ` +
+        `${CLOUD_OPT_IN_KEY}=true to opt in.`,
     );
   }
   env.MOZAIK_CREDENTIALS_FILE = os.devNull;
