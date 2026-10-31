@@ -43,6 +43,13 @@
       "when": 1793429898100,
       "tag": "0005_lively_unus",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1793431579364,
+      "tag": "0006_talented_vapor",
+      "breakpoints": true
     }
   ]
 }

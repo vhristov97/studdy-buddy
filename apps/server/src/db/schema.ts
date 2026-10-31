@@ -16,6 +16,7 @@ import {
   MATERIAL_KINDS,
   TOPIC_EVENT_SOURCES,
   TOPIC_RATINGS,
+  VIZ_SUGGESTION_ORIGINS,
   type QuizDraftFlag,
   type QuizPlan,
   type QuizReport,
@@ -240,4 +241,28 @@ export const submission = sqliteTable(
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`),
   },
   (table) => [index("submission_quiz_id_idx").on(table.quizId)],
+);
+
+/** A visualization topic for a class: recommended by the viz-identifier agent or added by the student. */
+export const vizSuggestion = sqliteTable(
+  "viz_suggestion",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    classId: integer("class_id")
+      .notNull()
+      .references(() => classTable.id, { onDelete: "cascade" }),
+    concept: text("concept").notNull(),
+    /** Lesson section path; empty for a user topic. */
+    section: text("section").notNull(),
+    misconception: text("misconception").notNull(),
+    summary: text("summary").notNull(),
+    controlsJson: text("controls_json", { mode: "json" }).$type<string[]>().notNull(),
+    scenariosJson: text("scenarios_json", { mode: "json" }).$type<string[]>().notNull(),
+    origin: text("origin", { enum: VIZ_SUGGESTION_ORIGINS }).notNull(),
+    selected: integer("selected", { mode: "boolean" }).notNull().default(false),
+    /** The `viz_topics` job that produced it (agent suggestions only). */
+    jobId: integer("job_id").references(() => generationJob.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (table) => [index("viz_suggestion_class_id_idx").on(table.classId)],
 );

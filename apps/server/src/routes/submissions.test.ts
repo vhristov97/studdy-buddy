@@ -107,7 +107,7 @@ describe("quiz player and submission routes", () => {
   let quizId: number;
 
   beforeEach(async () => {
-    t = createTestApp({ pipeline: {} });
+    t = createTestApp({ pipeline: { vizAutoStart: false } });
     courseId = t.handle.db
       .insert(course)
       .values({ name: "Kurs za test" })

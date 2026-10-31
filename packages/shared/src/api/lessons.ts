@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { ClassStatus } from "./courses";
 
-/** What a generation job does. Later milestones add `viz_topics` and `viz`. */
-export const JOB_KINDS = ["lesson", "quiz"] as const;
+/** What a generation job does. A later milestone adds `viz` (building one visualization). */
+export const JOB_KINDS = ["lesson", "quiz", "viz_topics"] as const;
 export const JobKind = z.enum(JOB_KINDS);
 export type JobKind = z.infer<typeof JobKind>;
 
