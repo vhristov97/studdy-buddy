@@ -9,6 +9,7 @@ import type { LessonWriterInput, LessonWriterOptions } from "../agents/lesson-wr
 import { initAgentRuntime } from "../agents/runtime.js";
 import { FakeRunner } from "../agents/testing/fake-runner.js";
 import { classTable, course, generationJob, material } from "../db/schema.js";
+import { ConflictError } from "../repositories/conflict.js";
 import { getLessonView } from "../repositories/lessons.js";
 import { createTestApp, type TestApp } from "../test/app.js";
 import { DOMAIN_EVENTS, type LessonReadyPayload } from "./events.js";
@@ -104,7 +105,6 @@ describe("pipeline", () => {
     addMaterial("material", "b.pdf", "TEKST B");
     addMaterial("material", "a.pdf", "TEKST A");
     addMaterial("note", "n.md", "BELESKA");
-    addMaterial("material", "broken.pdf", null, false);
   });
 
   afterEach(async () => {
@@ -240,10 +240,25 @@ describe("pipeline", () => {
   });
 
   it("does not count notes or failed extractions as usable materials", () => {
-    t.handle.db.delete(material).where(eq(material.kind, "material")).run();
-    addMaterial("material", "broken.pdf", null, false);
+    t.handle.db.delete(material).run();
+    addMaterial("note", "n.md", "BELESKA");
     expect(() => pipeline.requestGeneration(classId)).toThrow(/no class materials/);
   });
+
+  it.each(["material", "note"] as const)(
+    "refuses to generate while a %s with failed extraction exists",
+    (kind) => {
+      addMaterial(kind, "broken.pdf", null, false);
+      addMaterial(kind, "also-broken.pdf", null, false);
+      expect(() => pipeline.requestGeneration(classId)).toThrow(ConflictError);
+      expect(() => pipeline.requestGeneration(classId)).toThrow(
+        /could not be extracted.*also-broken\.pdf, broken\.pdf/,
+      );
+      expect(classStatus()).toBe("draft");
+      expect(jobs()).toHaveLength(0);
+      expect(writer).not.toHaveBeenCalled();
+    },
+  );
 
   it("emits throttled progress events counting streamed characters", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });

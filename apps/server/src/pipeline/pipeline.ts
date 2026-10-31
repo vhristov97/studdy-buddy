@@ -102,6 +102,21 @@ export function createPipeline({
       if (cls.status === "generating") throw new ConflictError("The class is already generating");
       if (cls.status === "ready") throw new ConflictError("The class is already generated");
 
+      // Materials lock after generation, so a file whose text could not be extracted would be lost.
+      const unreadable = tx
+        .select({ originalName: material.originalName })
+        .from(material)
+        .where(and(eq(material.classId, classId), eq(material.extractionStatus, "failed")))
+        .orderBy(asc(material.originalName))
+        .all();
+      if (unreadable.length > 0) {
+        throw new ConflictError(
+          `Remove or replace the files whose text could not be extracted before generating: ${unreadable
+            .map((f) => f.originalName)
+            .join(", ")}`,
+        );
+      }
+
       const usable = tx
         .select({ id: material.id })
         .from(material)
