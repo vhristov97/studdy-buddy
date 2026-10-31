@@ -37,7 +37,7 @@ Decide how many questions each topic gets and from which angle:
 - Untested topics (rating ?): cover broadly, weighted by importance. Slides and (P) remarks that signal exam relevance weigh more than side details.
 - Topics the student answered wrong before (history entries from sources "quiz" or "grading" with a misconception, or rating ✗/~): they get the MOST questions, and each is asked from a DIFFERENT angle than before (a new scenario, the question reversed, a rephrasing, a different concrete example). The goal is to learn the concept, not to memorize an earlier answer. A "Ne znam" (gap) is not a misconception: that concept is taught first, so ask it plainly and build up.
 - Topics answered correctly come back harder: application in a scenario, edge cases, comparison with a neighbouring concept.
-- Every misconception from the student's notes (history source "notes") gets at least one question in which that misconception is the main distractor. The message lists these misconceptions explicitly, numbered per topic. Set targetsMisconception on that row to the misconception text copied exactly (character for character) from that list. Every listed misconception needs its own question: two misconceptions on one topic need two questions. The answer to such a row is the correction. Rows that are not built around a misconception have targetsMisconception null.
+- Every misconception from the student's notes (history source "notes") gets at least one question in which that misconception is the main distractor. The message lists these misconceptions explicitly, numbered per topic. Set targetsMisconception on that row to the misconception text copied exactly (character for character) from that list. Every listed misconception needs its own question on that same topic (topic set to that topic's name, isRepeat false; a question on another topic or a repeat does not count): two misconceptions on one topic need two questions. The answer to such a row is the correction. Rows that are not built around a misconception have targetsMisconception null.
 - Deferred topics (the lecturer promised to cover them later) are NOT tested. List each in leftOut with the reason.
 - Repeats from earlier classes: pick the weakest earlier topics (a handful, about a quarter of the closed questions at most, fewer when there are few). Set isRepeat true on them and use a NEW angle. Base such a question on the earlier lesson (provided inside <ranija_lekcija>) together with the history (the misconception and its correction); never ask what you cannot verify from them. Set ref to "Predavanje <N> › <section path>", where N is the earlier class number and the section path is the heading path in that earlier lesson, separated by " › ".
 - Topics that do not fit in the quiz go to leftOut, each with a short reason (for example "ostalo bez pitanja zbog obima", "sporedna tema"). They are put on the backlog for the next cumulative review. Do not leave out a topic that has a notes misconception unless it is deferred.
@@ -122,10 +122,10 @@ function normalizeText(text: string): string {
 /** The notes misconceptions of the current, non-deferred topics that the quiz must target. */
 function requiredMisconceptions(ctx: QuizContext): { topic: string; texts: string[] }[] {
   const result: { topic: string; texts: string[] }[] = [];
-  const seen = new Set<string>();
   for (const topic of ctx.topics) {
     if (topic.deferred) continue;
     const texts: string[] = [];
+    const seen = new Set<string>();
     for (const h of topic.history) {
       if (h.source !== "notes" || h.misconception === null) continue;
       const key = normalizeText(h.misconception);
@@ -291,18 +291,24 @@ export function quizPlanSchema(ctx: QuizContext): z.ZodType<QuizPlan> {
       }
     }
 
+    // Coverage is keyed by (topic, misconception): only a non-repeat question on the topic counts.
     const targeted = new Set(
       plan.questions.flatMap((q) =>
-        q.targetsMisconception === null ? [] : [normalizeText(q.targetsMisconception)],
+        q.targetsMisconception === null || q.isRepeat
+          ? []
+          : [JSON.stringify([q.topic, normalizeText(q.targetsMisconception)])],
       ),
     );
     for (const { topic, texts } of requiredMisconceptions(ctx)) {
-      const uncovered = texts.filter((t) => !targeted.has(normalizeText(t)));
+      const uncovered = texts.filter(
+        (t) => !targeted.has(JSON.stringify([topic, normalizeText(t)])),
+      );
       if (uncovered.length > 0) {
         issue(
           `Topic "${topic}" has misconceptions from the student's notes that no question targets: ` +
-            `${uncovered.map((t) => JSON.stringify(t)).join("; ")}. Add a question for each, with ` +
-            "targetsMisconception set to the misconception text copied exactly.",
+            `${uncovered.map((t) => JSON.stringify(t)).join("; ")}. Add a question for each ` +
+            "on that topic (isRepeat false, topic copied exactly), with targetsMisconception set to " +
+            "the misconception text copied exactly. A question on another topic or a repeat does not count.",
           ["questions"],
         );
       }

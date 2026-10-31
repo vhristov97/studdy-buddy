@@ -316,16 +316,48 @@ describe("quizPlanSchema", () => {
     });
 
     it("accepts a plan that targets both", () => {
-      const plan = mutated((p) => void (p.questions[1]!.targetsMisconception = SECOND));
+      const plan = mutated((p) => {
+        p.questions[1]!.topic = "Batch obrada";
+        p.questions[1]!.targetsMisconception = SECOND;
+      });
       expect(issuesOf(plan, twoCtx())).toBe("");
     });
 
     it("compares after trimming, collapsing whitespace and case-folding", () => {
       const plan = mutated((p) => {
         p.questions[0]!.targetsMisconception = `  ${MISCONCEPTION.toUpperCase().replace(/ /g, "  ")} `;
+        p.questions[1]!.topic = "Batch obrada";
         p.questions[1]!.targetsMisconception = SECOND.toLowerCase();
       });
       expect(issuesOf(plan, twoCtx())).toBe("");
+    });
+
+    it("rejects a matching target on a different topic", () => {
+      const plan = mutated((p) => {
+        p.questions[0]!.targetsMisconception = null;
+        p.questions[1]!.targetsMisconception = MISCONCEPTION; // q2 is on "Stream obrada"
+      });
+      const issues = issuesOf(plan);
+      expect(issues).toContain(`Topic "Batch obrada"`);
+      expect(issues).toContain(JSON.stringify(MISCONCEPTION));
+      expect(issues).toContain("on that topic");
+    });
+
+    it("rejects a matching target on a repeat that shares the topic's name", () => {
+      const ctx = ctxFixture();
+      ctx.earlierTopics.push({ ...ctx.earlierTopics[0]!, name: "Batch obrada" });
+      const plan = mutated((p) => {
+        p.questions[0]!.targetsMisconception = null;
+        p.questions[5]!.topic = "Batch obrada"; // q6 is a repeat
+        p.questions[5]!.targetsMisconception = MISCONCEPTION;
+      });
+      const issues = issuesOf(plan, ctx);
+      expect(issues).toContain(`Topic "Batch obrada"`);
+      expect(issues).toContain(JSON.stringify(MISCONCEPTION));
+    });
+
+    it("accepts a matching target on the right topic", () => {
+      expect(issuesOf(planFixture())).toBe("");
     });
 
     it("does not accept a targeted text that matches no misconception", () => {
