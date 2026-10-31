@@ -384,16 +384,31 @@ describe("cumulativeSchedule: grading status", () => {
 describe("reviewCodeForClass", () => {
   it("steps one review per cadence of classes past what existing reviews cover", () => {
     const courseId = addCourse(4);
-    const ids = [1, 2, 3, 4, 5, 8, 12].map((n) => addClass(courseId, n));
+    const ids = [1, 2, 3, 4, 5, 8, 12, 13, 14].map((n) => addClass(courseId, n));
     for (const n of [1, 2, 3, 4]) expect(reviewCodeForClass(db(), courseId, n)).toBe("K1");
-    for (const n of [5, 6, 7, 8]) expect(reviewCodeForClass(db(), courseId, n)).toBe("K2");
-    expect(reviewCodeForClass(db(), courseId, 12)).toBe("K3");
+    for (const n of [5, 8, 12, 13]) expect(reviewCodeForClass(db(), courseId, n)).toBe("K2");
+    expect(reviewCodeForClass(db(), courseId, 14)).toBe("K3");
     // after K1 (covering 1-4) is released: covered history labels with the next review
     addK(courseId, "K1", ids[3]!);
     expect(reviewCodeForClass(db(), courseId, 2)).toBe("K2");
-    expect(reviewCodeForClass(db(), courseId, 5)).toBe("K2");
-    expect(reviewCodeForClass(db(), courseId, 8)).toBe("K2");
-    expect(reviewCodeForClass(db(), courseId, 9)).toBe("K3");
+    for (const n of [5, 8, 12, 13]) expect(reviewCodeForClass(db(), courseId, n)).toBe("K2");
+    expect(reviewCodeForClass(db(), courseId, 14)).toBe("K3");
+  });
+
+  it("counts positions among ready classes, not raw class numbers", () => {
+    const courseId = addCourse(2);
+    [1, 5].forEach((n) => addClass(courseId, n));
+    expect(reviewCodeForClass(db(), courseId, 1)).toBe("K1");
+    expect(reviewCodeForClass(db(), courseId, 5)).toBe("K1");
+
+    const other = addCourse(2);
+    const otherIds = [1, 2, 5, 9].map((n) => addClass(other, n));
+    for (const n of [1, 2]) expect(reviewCodeForClass(db(), other, n)).toBe("K1");
+    for (const n of [5, 9]) expect(reviewCodeForClass(db(), other, n)).toBe("K2");
+    // K1 released covering class 2: classes 5 and 9 are the next uncovered step
+    addK(other, "K1", otherIds[1]!);
+    expect(reviewCodeForClass(db(), other, 5)).toBe("K2");
+    expect(reviewCodeForClass(db(), other, 9)).toBe("K2");
   });
 
   it("is the next review for every class without a cadence", () => {

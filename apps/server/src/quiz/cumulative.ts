@@ -123,11 +123,14 @@ export function nextReviewCode(db: DbOrTx, courseId: number): string {
 
 /**
  * The label for a gap found in class `classNumber`: the code of the review that will cover that
- * class. With a cadence `c`, `L` = the highest class an existing review covers and `n0` = the
- * number of the next unused code: a class up to `L` is already covered history, so the next review
- * is the one that covers it (`K<n0>`); a later class `k` lands in step `floor((k - L - 1) / c)`
- * past it (`K<n0 + step>`). Without a cadence it is always the next code. Informational only: a
- * review's required items are decided by coverage, never by this label.
+ * class. Positions count READY classes (class numbers may skip), the same way `cumulativeStatus`
+ * schedules. With a cadence `c`, `L` = the highest class an existing review covers, `coveredCount`
+ * = the ready classes up to `L` and `n0` = the number of the next unused code: a class whose
+ * position is within `coveredCount` is covered history, so the next review (`K<n0>`) is the one that
+ * covers it; a later class at position `p` lands in step `floor((p - coveredCount - 1) / c)` past
+ * it (`K<n0 + step>`). A class that is not ready takes the position it would have. Without a
+ * cadence it is always the next code. Informational only: a review's required items are decided by
+ * coverage, never by this label.
  */
 export function reviewCodeForClass(db: DbOrTx, courseId: number, classNumber: number): string {
   const nextCode = nextReviewCode(db, courseId);
@@ -137,8 +140,10 @@ export function reviewCodeForClass(db: DbOrTx, courseId: number, classNumber: nu
   if (cadence === null || cadence < 1) return nextCode;
   const ready = readyClasses(db, courseId);
   const last = Math.max(0, ...existingCumulatives(db, courseId, ready).map((e) => e.coversThrough));
-  if (classNumber <= last) return nextCode;
-  const step = Math.floor((classNumber - last - 1) / cadence);
+  const coveredCount = ready.filter((c) => c.number <= last).length;
+  const position = ready.filter((c) => c.number < classNumber).length + 1;
+  if (position <= coveredCount) return nextCode;
+  const step = Math.floor((position - coveredCount - 1) / cadence);
   return cumulativeCode(parseCumulativeCode(nextCode)! + step);
 }
 
