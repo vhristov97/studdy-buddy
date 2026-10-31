@@ -69,6 +69,7 @@ export interface Pipeline {
    * Throws 404/409 `ApiError`s.
    */
   requestGrading(submissionId: number): GenerationJob;
+  /**
    * Reruns the viz-topic identifier of a `ready` class whose latest `viz_topics` job failed or is
    * absent (classes generated before M7). Throws 404/409 `ApiError`s.
    */

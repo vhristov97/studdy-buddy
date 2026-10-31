@@ -10,7 +10,13 @@ export const JOB_KIND_LABELS: Record<JobKind, string> = {
 };
 
 /** Pipeline position of each kind; the panel lists its rows in this order. */
-export const JOB_KIND_ORDER: readonly JobKind[] = ["lesson", "quiz", "grading", "viz_topics", "viz"];
+export const JOB_KIND_ORDER: readonly JobKind[] = [
+  "lesson",
+  "quiz",
+  "grading",
+  "viz_topics",
+  "viz",
+];
 
 /** Step label per stage name, given the review cycle of the job. */
 const STAGE_LABELS: Record<string, (cycle: number | null) => string> = {
