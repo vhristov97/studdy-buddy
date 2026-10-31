@@ -93,7 +93,7 @@ function quote(text: string): string {
   return `"${text.replace(/\s+/g, " ").trim()}"`;
 }
 
-function formatTopic(topic: QuizTopicInput, index: number, classNumber?: number): string {
+export function formatTopic(topic: QuizTopicInput, index: number, classNumber?: number): string {
   const head = [
     `${index + 1}. ${topic.name}`,
     classNumber !== undefined ? `(predavanje ${classNumber})` : "",

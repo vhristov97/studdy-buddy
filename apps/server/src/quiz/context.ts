@@ -68,7 +68,7 @@ export interface NotesMisconception {
   correction: string;
 }
 
-function toTopicInput(topic: LessonView["topics"][number]): QuizTopicInput {
+export function toTopicInput(topic: LessonView["topics"][number]): QuizTopicInput {
   return {
     name: topic.name,
     rating: topic.rating,

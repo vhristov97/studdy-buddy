@@ -12,3 +12,4 @@ export * from "./quiz/draft";
 export * from "./quiz/validate";
 export * from "./quiz/public";
 export * from "./quiz/scoring";
+export * from "./grading/result";

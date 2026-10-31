@@ -117,7 +117,7 @@ Dependencies: M0 → M1 → M2 → M3, then M4 ∥ M7 (M5 can start once the M4 
 - [x] M5.2 Submission API + persistence in the §8 format, with auto-scoring in `packages/shared` (shared with the server).
 
 ### M6: Grading + progress
-- [ ] M6.1 grader prompt + output schema (open-answer grades, gap vs misconception classification, topic rating changes, backlog changes, observations, next steps, write-up). Grading starts automatically on submit.
+- [x] M6.1 grader prompt + output schema (open-answer grades, gap vs misconception classification, topic rating changes, backlog changes, observations, next steps, write-up). Grading starts automatically on submit.
 - [ ] M6.2 Transactional persistence of grading results. Invariants: "Ne znam" is never a misconception and a wrong answer is never a gap.
 - [ ] M6.3 Progress page: Sledeće, backlog, topic mastery overview, quiz history with results write-ups, viz registry, cumulative schedule. Session-start flags: classes with materials but no lesson, ungraded submissions, a due cumulative test (§14).
 
