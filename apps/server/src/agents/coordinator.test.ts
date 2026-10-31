@@ -4,16 +4,13 @@ import path from "node:path";
 import type { SemanticEvent } from "@mozaik-ai/core";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
-import {
-  Coordinator,
-  DOMAIN_EVENTS,
-  HANDLER_FAILED,
-  type HandlerFailedPayload,
-} from "./coordinator.js";
+import { Coordinator, HANDLER_FAILED, type HandlerFailedPayload } from "./coordinator.js";
 import { ResilientRunner } from "./resilient-runner.js";
 import { STAGE_FAILED, initAgentRuntime, publishStageFailed } from "./runtime.js";
 import { runStage } from "./stage.js";
 import { FakeRunner, fakeJsonAnswer, type FakeResponder } from "./testing/fake-runner.js";
+
+const DOMAIN_EVENTS = { DEMO_REQUESTED: "demo.requested", DEMO_READY: "demo.ready" } as const;
 
 async function waitFor(check: () => boolean, ms = 1000): Promise<void> {
   const deadline = Date.now() + ms;

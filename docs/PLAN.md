@@ -103,8 +103,8 @@ Dependencies: M0 → M1 → M2 → M3, then M4 ∥ M7 (M5 can start once the M4 
 - [x] M2.3 UI: course list/create, course page with classes, class page with uploads, a material viewer (PDF.js viewer, sandboxed iframe for HTML, rendered Markdown for notes, "show extracted text" toggle). No editing after generation.
 
 ### M3: Combined notes
-- [ ] M3.1 lesson-writer prompt + output schema (`lessonMd`, `topics[]` with misconceptions found in notes, deferred flag). Works with no notes.
-- [ ] M3.2 `generation_job` table + repository (moved from M1, since it references `class`), generate endpoint, job lifecycle, SSE stream, persistence of lesson, topics, and `notes` topic_events.
+- [x] M3.1 lesson-writer prompt + output schema (`lessonMd`, `topics[]` with misconceptions found in notes, deferred flag). Works with no notes.
+- [x] M3.2 `generation_job` table + repository (moved from M1, since it references `class`), generate endpoint, job lifecycle, SSE stream, persistence of lesson, topics, and `notes` topic_events.
 - [ ] M3.3 Lesson view: rendered Markdown with styled (P)/(D) tags and `⚠️ Ispravka` callouts, a live tracking table from the DB, a pipeline status panel.
 
 ### M4: Quiz branch

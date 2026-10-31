@@ -22,6 +22,13 @@
       "when": 1793406383194,
       "tag": "0002_furry_rachel_grey",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1793409127032,
+      "tag": "0003_famous_zombie",
+      "breakpoints": true
     }
   ]
 }
