@@ -1,10 +1,15 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render as baseRender, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactElement } from "react";
+import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { QuizSummary } from "@studdy/shared";
 import { apiError, job, mockApi } from "../test/utils";
 import { PipelinePanel, PipelineStages } from "./PipelinePanel";
+
+/** The panel links to the player, so it needs a router. */
+const render = (ui: ReactElement) => baseRender(ui, { wrapper: MemoryRouter });
 
 const NOW = Date.parse("2026-01-01T10:01:05.000Z");
 
@@ -211,7 +216,10 @@ describe("PipelineStages quiz rows", () => {
       />,
     );
     expect(screen.getAllByText("Završeno")).toHaveLength(2);
-    expect(screen.getByText("P01 · 20 pitanja")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "P01 · 20 pitanja" })).toHaveAttribute(
+      "href",
+      "/kvizovi/1",
+    );
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 });
@@ -282,7 +290,10 @@ describe("PipelinePanel", () => {
       ],
     });
     renderPanel();
-    expect(await screen.findByText("P01 · 20 pitanja")).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "P01 · 20 pitanja" })).toHaveAttribute(
+      "href",
+      "/kvizovi/1",
+    );
     expect(screen.queryByText(/P02/)).not.toBeInTheDocument();
   });
 

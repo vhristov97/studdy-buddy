@@ -113,8 +113,8 @@ Dependencies: M0 → M1 → M2 → M3, then M4 ∥ M7 (M5 can start once the M4 
 - [x] M4.3 Review loop (validator + reviewer, ≤3 cycles with the same builder), release to the quiz library, failure + regeneration flow. Plans never leave the server.
 
 ### M5: Quiz player
-- [ ] M5.1 Player per spec §8: picker (newest preselected), all four question types, "Ne znam" on every question, metadata, autosave (fault-tolerant localStorage), progress bar, two-step submit, instant feedback for closed questions, score line, reset, JSON fallback with copy button.
-- [ ] M5.2 Submission API + persistence in the §8 format, with auto-scoring in `packages/shared` (shared with the server).
+- [x] M5.1 Player per spec §8: picker (newest preselected), all four question types, "Ne znam" on every question, metadata, autosave (fault-tolerant localStorage), progress bar, two-step submit, instant feedback for closed questions, score line, reset, JSON fallback with copy button.
+- [x] M5.2 Submission API + persistence in the §8 format, with auto-scoring in `packages/shared` (shared with the server).
 
 ### M6: Grading + progress
 - [ ] M6.1 grader prompt + output schema (open-answer grades, gap vs misconception classification, topic rating changes, backlog changes, observations, next steps, write-up). Grading starts automatically on submit.
@@ -141,8 +141,16 @@ Opus checks every task with `npm run typecheck && npm run lint && npm test`, rea
 
 State and context a fresh session needs. Keep this section current at every milestone boundary.
 
-### Where things stand (after M3, merged in PR #8)
-- **Done**: M0–M3. Next: **M4 on branch `m4-quiz`** (already created from `main`). M5 can start once the M4.1 quiz schema exists; M7 is also unblocked.
+### Where things stand (after M4, merged in PR #9)
+- **Done**: M0–M4. Next: **M5 on branch `m5-player`** (already created from `main`). M7 (viz branch) is also unblocked.
+- **Quiz layer (M4)**:
+  - Shared (`packages/shared/src/quiz/`): `Quiz`/`Question` (`mc`/`num`/`match`/`open`), `QuizPlan`, `QuizDraft`, `QuizReview`, `validateQuiz`, `lessonQuizCode`.
+  - Server: `pipeline/quiz-branch.ts` runs on `lesson.ready`: plan → build → review, with ≤3 fix rounds on one builder session, then release or fail. It emits `quiz.released` `{classId, quizId, code}`.
+  - DB: `quiz` holds the released quiz with answers in `questions_json`; `quiz_plan` holds the plan, draft and per-cycle log, and no route exposes it.
+  - Regeneration: `POST /api/classes/:classId/quiz/regenerate`, which also starts the first quiz for classes generated before M4.
+  - Read API: `GET /api/courses/:courseId/quizzes` returns `QuizSummary[]` with no questions. **The player API (questions without answers before submit) is M5's job.**
+  - Real-run behaviour: a P01 quiz on class 01 takes ~8 min, and the reviewer typically requests real fixes for 2–3 rounds, so some quizzes may fail at the 3-round limit and need the regenerate button. Watch the failure rate before loosening the reviewer.
+  - Topic linkage: quiz questions carry `topic` (name) and plan rows carry `isRepeat`. To map a question to a `topic` row for M6 grading events, match the name within the class (or the earlier class for repeats).
 - **Agent layer** (`apps/server/src/agents/`):
   - Run agent steps with `runStage(spec, message)` or `openStageSession(spec)` (multi-turn, for builder fix cycles) from `stage.ts`. Pass `model: config.MODEL_PLANNER` / `config.MODEL_BUILDER` and a Zod `schema`. Optional fields must be `.nullable()`, never `.optional()`; `z.record` is rejected.
   - Put cross-field checks in a `.superRefine` on the stage schema. Failures go back to the model through the repair loop (`repairAttempts`). `lessonDraftSchema` in `lesson-writer.ts` is the pattern to copy.
@@ -177,19 +185,27 @@ State and context a fresh session needs. Keep this section current at every mile
 - `npm run extract -- <file>` prints extracted text. `npm run lesson:try -- --class <id>` runs the lesson writer alone, without the DB pipeline (real API; output goes to `data/tmp/`).
 - Screenshots: `screenshots/<milestone>/` (git-ignored). For long pages, use `--window-size=1280,50000 --force-device-scale-factor=0.5`, then crop with `magick`.
 
-### M4 guidance
-- **M4.1 schemas** (`packages/shared`):
-  - `QuizPlan` is server-only and never sent to the web app.
-  - `Quiz`/`Question` cover the types `mc`/`num`/`match`/`open`.
-  - The §7.3 validator is pure and tested; M5's player and auto-scoring reuse it.
-  - Quiz codes are `P<NN>` per class (`P01`).
-- **Planner** (Opus, spec §7.1). Inputs:
-  - the lesson Markdown;
-  - the topics with their `topic_event` history (notes misconceptions included);
-  - backlog items (none yet; the table arrives with M6, so pass an empty list or add the table now);
-  - learner observations (none yet);
-  - the course assessment format and persona.
-- **Builder** (Sonnet, spec §7.2): follows the plan exactly and never changes the planned answers.
-- **Review loop** (§7.4): run the validator plus a reviewer (planner model), with at most 3 fix cycles on the same builder session (`openStageSession`). After the 3rd failure, mark the quiz job failed, stop, and offer a from-scratch regeneration (re-plan + re-build). This overrides spec §7.4's "planner fixes the rest itself".
-- **Release**: quizzes are immutable once released, and plans never leave the server.
-- **Quality check**: at the end of M4, Opus runs one real quiz generation on class 01 and judges it against §7 before the PR.
+### M5 guidance
+- **Player API**:
+  - `GET /api/quizzes/:id` returns the quiz **without** answers, explanations or key points: options/rows/choices/prompt/ref/extra/topic only, enforcing spec §16 (answers never shown before submit). A `toPublicQuiz` in shared keeps both sides in sync.
+  - After a submission, the server returns the full feedback (correct answers, explanations, key points) for that submission.
+- **Submission format** (spec §8):
+  - options as indexes;
+  - `match` answers as `{row: choiceIndex}`;
+  - "Ne znam" as `"?"`;
+  - don't-know ids like `q3` / `q14.r2`;
+  - auto score/max computed by shared scoring code (`match` partial credit = share of correct rows; `num` within tolerance).
+  - Open answers are stored ungraded; M6 grades them.
+- **Player UI** (spec §8):
+  - picker with the newest quiz preselected;
+  - "Ne znam" on every question (dashed last option on mc, checkbox on num/open, a choice in each match dropdown);
+  - metadata: ref with "(predavač)", extra marker;
+  - progress bar;
+  - two-step submit when questions are unanswered;
+  - instant feedback (Tačno / Netačno / Delimično (k/n) / Ne znam), score line plus "N otvorenih pitanja čeka ocenjivanje";
+  - reset/retake;
+  - draft autosave in localStorage (try/catch, works without it);
+  - JSON fallback with a copy button if saving fails;
+  - light/dark, phone width, reduced motion.
+- **Entry points**: link the quiz from the course "Kvizovi" list and from the class pipeline panel's finished quiz row.
+- **Data for screenshots**: the dev DB has P01 (22 questions) for class 01.

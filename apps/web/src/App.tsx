@@ -6,6 +6,7 @@ import { CoursesPage } from "./pages/CoursesPage";
 import { LessonPage } from "./pages/LessonPage";
 import { MaterialPage } from "./pages/MaterialPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { CourseQuizzesPage, QuizPage } from "./pages/QuizPage";
 
 export function App() {
   return (
@@ -13,6 +14,9 @@ export function App() {
       <Route element={<Layout />}>
         <Route index element={<CoursesPage />} />
         <Route path="kursevi/:courseId" element={<CoursePage />} />
+        <Route path="kursevi/:courseId/kvizovi" element={<CourseQuizzesPage />} />
+        <Route path="kvizovi/:quizId" element={<QuizPage />} />
+        <Route path="kvizovi/:quizId/predaje/:submissionId" element={<QuizPage />} />
         <Route path="predavanja/:classId" element={<ClassPage />} />
         <Route path="predavanja/:classId/lekcija" element={<LessonPage />} />
         <Route path="materijali/:materialId" element={<MaterialPage />} />

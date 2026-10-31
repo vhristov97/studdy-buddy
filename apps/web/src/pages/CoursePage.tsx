@@ -184,10 +184,10 @@ function QuizList({ courseId }: { courseId: number }) {
 function QuizItem({ quiz }: { quiz: QuizSummary }) {
   return (
     <li className={styles.quizItem}>
-      <div className={styles.quizHead}>
+      <Link to={`/kvizovi/${quiz.id}`} className={styles.quizHead}>
         <strong className={styles.quizCode}>{quiz.code}</strong>
         <span className={styles.quizTitle}>{quiz.title}</span>
-      </div>
+      </Link>
       <p className={styles.counts}>{quiz.subtitle}</p>
       {quiz.chips.length > 0 && (
         <ul className={styles.chips} aria-label="Oznake">

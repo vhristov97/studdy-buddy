@@ -9,7 +9,11 @@ import {
   formatBytes,
   formatCount,
   formatDate,
+  formatDateTime,
+  formatDecimal,
+  formatExact,
   formatDuration,
+  openAwaitingGrading,
   plural,
   pluralForm,
 } from "./format";
@@ -124,5 +128,41 @@ describe("countQuestions", () => {
 describe("formatDate", () => {
   it("formats day, month and year without padding", () => {
     expect(formatDate("2026-03-05T12:00:00.000Z")).toBe("5. 3. 2026.");
+  });
+});
+
+describe("formatDecimal", () => {
+  it("uses a decimal comma and drops float noise", () => {
+    expect(formatDecimal(7.5)).toBe("7,5");
+    expect(formatDecimal(3)).toBe("3");
+    expect(formatDecimal(0.1 + 0.2)).toBe("0,3");
+    expect(formatDecimal(-1.25)).toBe("-1,25");
+  });
+});
+
+describe("formatExact", () => {
+  it("keeps the exact value with a decimal comma and no exponent", () => {
+    expect(formatExact(3.5)).toBe("3,5");
+    expect(formatExact(20)).toBe("20");
+    expect(formatExact(-1.25)).toBe("-1,25");
+    expect(formatExact(0.0000001)).toBe("0,0000001");
+    expect(formatExact(1e-12)).toBe("0,000000000001");
+    expect(formatExact(1.5e-7)).toBe("0,00000015");
+    expect(formatExact(1e21)).toBe("1000000000000000000000");
+  });
+});
+
+describe("formatDateTime", () => {
+  it("appends a padded local time to the date", () => {
+    expect(formatDateTime(new Date(2026, 2, 5, 9, 4).toISOString())).toBe("5. 3. 2026. 09:04");
+  });
+});
+
+describe("openAwaitingGrading", () => {
+  it("agrees the noun and verb with the count", () => {
+    expect(openAwaitingGrading(1)).toBe("1 otvoreno pitanje čeka ocenjivanje");
+    expect(openAwaitingGrading(3)).toBe("3 otvorena pitanja čekaju ocenjivanje");
+    expect(openAwaitingGrading(5)).toBe("5 otvorenih pitanja čeka ocenjivanje");
+    expect(openAwaitingGrading(12)).toBe("12 otvorenih pitanja čeka ocenjivanje");
   });
 });

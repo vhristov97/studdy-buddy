@@ -76,3 +76,35 @@ export function formatDate(iso: string): string {
   const date = new Date(iso);
   return `${date.getDate()}. ${date.getMonth() + 1}. ${date.getFullYear()}.`;
 }
+
+/** Decimal number with a comma and no float noise, e.g. 7.5 -> "7,5". */
+export function formatDecimal(n: number): string {
+  return String(Math.round(n * 1e6) / 1e6).replace(".", ",");
+}
+
+/**
+ * Exact decimal form of a number value with a comma, never rounded and never in exponent form
+ * (1e-7 -> "0,0000001"), for showing a submitted or correct numeric answer.
+ */
+export function formatExact(n: number): string {
+  const plain = String(n);
+  const text = /e/i.test(plain)
+    ? n.toLocaleString("en-US", { maximumSignificantDigits: 17, useGrouping: false })
+    : plain;
+  return text.replace(".", ",");
+}
+
+/** Date and time of an ISO timestamp in local time, e.g. "31. 10. 2026. 14:05". */
+export function formatDateTime(iso: string): string {
+  const date = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${formatDate(iso)} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/** "1 otvoreno pitanje čeka ocenjivanje" / "2 otvorena pitanja čekaju ocenjivanje" / "5 otvorenih pitanja čeka ocenjivanje". */
+export function openAwaitingGrading(n: number): string {
+  const form = pluralForm(n);
+  if (form === 1) return `${n} otvoreno pitanje čeka ocenjivanje`;
+  if (form === 2) return `${n} otvorena pitanja čekaju ocenjivanje`;
+  return `${n} otvorenih pitanja čeka ocenjivanje`;
+}

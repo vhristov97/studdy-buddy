@@ -5,6 +5,9 @@ export const queryKeys = {
   class: (id: number) => ["classes", id] as const,
   classJobs: (id: number) => ["classes", id, "jobs"] as const,
   lesson: (id: number) => ["classes", id, "lesson"] as const,
+  quiz: (id: number) => ["quizzes", id] as const,
+  quizSubmissions: (id: number) => ["quizzes", id, "submissions"] as const,
+  submission: (id: number) => ["submissions", id] as const,
   material: (id: number) => ["materials", id] as const,
   materialFile: (id: number) => ["materials", id, "file"] as const,
 };

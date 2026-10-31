@@ -23,6 +23,13 @@
   --color-callout-deferred-bg: #efefec;
   --color-callout-deferred-border: #8b8e94;
 
+  --color-success-bg: #e3f3e8;
+  --color-danger-bg: #fbe9e7;
+  --color-warning-bg: #fbefd2;
+  --color-dontknow: #555a85;
+  --color-dontknow-bg: #ececf5;
+  --color-progress-track: #e4e5e0;
+
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -75,6 +82,13 @@
     --color-callout-question-border: #7ea2ff;
     --color-callout-deferred-bg: #26282c;
     --color-callout-deferred-border: #6b6f76;
+
+    --color-success-bg: #15301d;
+    --color-danger-bg: #3a1c1a;
+    --color-warning-bg: #3a2c0e;
+    --color-dontknow: #aab0e0;
+    --color-dontknow-bg: #25263a;
+    --color-progress-track: #33363b;
   }
 }
 
@@ -102,6 +116,13 @@
   --color-callout-question-border: #7ea2ff;
   --color-callout-deferred-bg: #26282c;
   --color-callout-deferred-border: #6b6f76;
+
+  --color-success-bg: #15301d;
+  --color-danger-bg: #3a1c1a;
+  --color-warning-bg: #3a2c0e;
+  --color-dontknow: #aab0e0;
+  --color-dontknow-bg: #25263a;
+  --color-progress-track: #33363b;
 }
 
 @media (prefers-reduced-motion: reduce) {
