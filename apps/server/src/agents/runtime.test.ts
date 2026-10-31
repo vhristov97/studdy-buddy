@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { assertTelemetryDisabled } from "./runtime.js";
+import { CLOUD_OPT_IN_KEY, assertTelemetryDisabled } from "./runtime.js";
 
 describe("assertTelemetryDisabled", () => {
   let dir: string;
@@ -51,6 +51,33 @@ describe("assertTelemetryDisabled", () => {
       expect(env.MOZAIK_CREDENTIALS_FILE).toBeUndefined();
     },
   );
+
+  it("opt-in in env allows telemetry keys and leaves credentials lookup alone", () => {
+    const env: NodeJS.ProcessEnv = {
+      [CLOUD_OPT_IN_KEY]: "true",
+      MOZAIK_API_KEY: "key",
+      MOZAIK_CREDENTIALS_FILE: path.join(dir, "creds.json"),
+    };
+    expect(() => assertTelemetryDisabled({ env, cwd: dir, repoRoot: dir })).not.toThrow();
+    expect(env.MOZAIK_CREDENTIALS_FILE).toBe(path.join(dir, "creds.json"));
+  });
+
+  it("opt-in in <repoRoot>/.env allows telemetry keys", () => {
+    fs.writeFileSync(
+      path.join(dir, ".env"),
+      `${CLOUD_OPT_IN_KEY}=true\nMOZAIK_API_KEY=key\n`,
+    );
+    const env: NodeJS.ProcessEnv = {};
+    expect(() => assertTelemetryDisabled({ env, cwd: dir, repoRoot: dir })).not.toThrow();
+    expect(env.MOZAIK_CREDENTIALS_FILE).toBeUndefined();
+  });
+
+  it.each(["false", "0", "no", "off"])("opt-in value %q does not opt in", (value) => {
+    const env: NodeJS.ProcessEnv = { [CLOUD_OPT_IN_KEY]: value, MOZAIK_API_KEY: "key" };
+    expect(() => assertTelemetryDisabled({ env, cwd: dir, repoRoot: dir })).toThrow(
+      "MOZAIK_API_KEY",
+    );
+  });
 
   it("accepts a missing .env and disables the SDK credentials lookup", () => {
     const env: NodeJS.ProcessEnv = { ANTHROPIC_API_KEY: "x" };
