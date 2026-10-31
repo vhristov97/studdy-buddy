@@ -63,20 +63,14 @@ describe("assertTelemetryDisabled", () => {
   });
 
   it("opt-in in <repoRoot>/.env allows telemetry keys", () => {
-    fs.writeFileSync(
-      path.join(dir, ".env"),
-      `${CLOUD_OPT_IN_KEY}=true\nMOZAIK_API_KEY=key\n`,
-    );
+    fs.writeFileSync(path.join(dir, ".env"), `${CLOUD_OPT_IN_KEY}=true\nMOZAIK_API_KEY=key\n`);
     const env: NodeJS.ProcessEnv = {};
     expect(() => assertTelemetryDisabled({ env, cwd: dir, repoRoot: dir })).not.toThrow();
     expect(env.MOZAIK_CREDENTIALS_FILE).toBeUndefined();
   });
 
   it("explicit opt-out in env overrides opt-in in .env", () => {
-    fs.writeFileSync(
-      path.join(dir, ".env"),
-      `${CLOUD_OPT_IN_KEY}=true\nMOZAIK_API_KEY=key\n`,
-    );
+    fs.writeFileSync(path.join(dir, ".env"), `${CLOUD_OPT_IN_KEY}=true\nMOZAIK_API_KEY=key\n`);
     const env: NodeJS.ProcessEnv = { [CLOUD_OPT_IN_KEY]: "false" };
     expect(() => assertTelemetryDisabled({ env, cwd: dir, repoRoot: dir })).toThrow(
       "MOZAIK_API_KEY",
@@ -84,10 +78,7 @@ describe("assertTelemetryDisabled", () => {
   });
 
   it("opt-in in env overrides opt-out in .env", () => {
-    fs.writeFileSync(
-      path.join(dir, ".env"),
-      `${CLOUD_OPT_IN_KEY}=false\n`,
-    );
+    fs.writeFileSync(path.join(dir, ".env"), `${CLOUD_OPT_IN_KEY}=false\n`);
     const env: NodeJS.ProcessEnv = { [CLOUD_OPT_IN_KEY]: "true", MOZAIK_API_KEY: "key" };
     expect(() => assertTelemetryDisabled({ env, cwd: dir, repoRoot: dir })).not.toThrow();
   });
