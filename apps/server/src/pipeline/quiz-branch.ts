@@ -57,7 +57,7 @@ export interface QuizBranch {
    */
   requestRegeneration(classId: number): GenerationJob;
   /**
-   * Starts the cumulative review `code` (default: the due one, else the smallest free `K<n>`)
+   * Starts the cumulative review `code` (default and only valid value: the next review, the smallest `K<n>` with no released quiz)
    * over every ready class up to the one the review covers. The job belongs to the highest covered
    * class (`class_id`; jobs need a class for the event stream) and carries `quiz_code`; the
    * released quiz has `class_id` null. A failed job of the same code is retried from scratch

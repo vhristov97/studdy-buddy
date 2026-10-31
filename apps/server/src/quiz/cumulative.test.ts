@@ -19,7 +19,7 @@ import { loadCumulativeContext } from "./context.js";
 import {
   cumulativeSchedule,
   cumulativeStatus,
-  nextFreeCumulativeCode,
+  nextReviewCode,
   parseCumulativeCode,
   resolveCumulativeTarget,
 } from "./cumulative.js";
@@ -265,32 +265,42 @@ describe("resolveCumulativeTarget", () => {
     });
   });
 
-  it("accepts an explicit non-due code and rejects existing codes and empty courses", () => {
+  it("accepts only the next code explicitly, and rejects empty courses", () => {
     const courseId = addCourse(4);
     const ids = [1, 2].map((n) => addClass(courseId, n));
-    expect(resolveCumulativeTarget(db(), courseId, "K3")).toMatchObject({
-      code: "K3",
+    expect(resolveCumulativeTarget(db(), courseId, "K1")).toMatchObject({
+      code: "K1",
       throughClass: { id: ids[1] },
       due: false,
     });
-    addK(courseId, "K3", ids[1]!);
-    expect(() => resolveCumulativeTarget(db(), courseId, "K3")).toThrow(ConflictError);
+    for (const bad of ["K3", "P01"]) {
+      expect(() => resolveCumulativeTarget(db(), courseId, bad)).toThrow(ConflictError);
+    }
+    expect(() => resolveCumulativeTarget(db(), courseId, "K3")).toThrow(/Sledeći .* K1/);
+    addK(courseId, "K1", ids[1]!);
+    expect(() => resolveCumulativeTarget(db(), courseId, "K1")).toThrow(/Sledeći .* K2/);
+    expect(resolveCumulativeTarget(db(), courseId, "K2").code).toBe("K2");
     expect(() => resolveCumulativeTarget(db(), addCourse(2))).toThrow(ConflictError);
   });
 });
 
-describe("nextFreeCumulativeCode", () => {
-  it("follows every existing review, or the one after a given review, never an existing code", () => {
+describe("nextReviewCode", () => {
+  it("is the smallest K<n> without a released quiz, used for scheduling and manual requests alike", () => {
     const courseId = addCourse(null);
     const ids = [1, 2].map((n) => addClass(courseId, n));
-    expect(nextFreeCumulativeCode(db(), courseId)).toBe("K1");
+    expect(nextReviewCode(db(), courseId)).toBe("K1");
     addK(courseId, "K1", ids[1]!);
-    expect(nextFreeCumulativeCode(db(), courseId)).toBe("K2");
+    expect(nextReviewCode(db(), courseId)).toBe("K2");
+    expect(resolveCumulativeTarget(db(), courseId).code).toBe("K2");
+    addK(courseId, "K2", ids[1]!);
+    expect(nextReviewCode(db(), courseId)).toBe("K3");
+  });
+
+  it("fills a gap, so the schedule and grading agree on it", () => {
+    const courseId = addCourse(null);
+    const ids = [1, 2].map((n) => addClass(courseId, n));
     addK(courseId, "K3", ids[1]!);
-    expect(nextFreeCumulativeCode(db(), courseId)).toBe("K4");
-    expect(nextFreeCumulativeCode(db(), courseId, { after: 1 })).toBe("K2");
-    expect(nextFreeCumulativeCode(db(), courseId, { after: 2 })).toBe("K4");
-    expect(nextFreeCumulativeCode(db(), courseId, { atLeast: 6 })).toBe("K6");
+    expect(nextReviewCode(db(), courseId)).toBe("K1");
   });
 });
 

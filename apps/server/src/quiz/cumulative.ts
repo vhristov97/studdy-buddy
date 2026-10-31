@@ -111,16 +111,12 @@ export function existingCumulativeNumbers(db: DbOrTx, courseId: number): Set<num
 }
 
 /**
- * The code a review that is still to come gets; never an existing one. With `after`: the smallest
- * free `K<n>` with n above it; otherwise n is above every existing review. `atLeast` raises the floor.
+ * The code of the next review: the smallest `K<n>` (n >= 1) with no released quiz in the course.
+ * Codes stay gap-free and sequential; a failed (never released) review keeps its code for the retry.
  */
-export function nextFreeCumulativeCode(
-  db: DbOrTx,
-  courseId: number,
-  opts: { after?: number; atLeast?: number } = {},
-): string {
+export function nextReviewCode(db: DbOrTx, courseId: number): string {
   const taken = existingCumulativeNumbers(db, courseId);
-  let n = Math.max(opts.atLeast ?? 1, (opts.after ?? Math.max(0, ...taken)) + 1);
+  let n = 1;
   while (taken.has(n)) n++;
   return cumulativeCode(n);
 }
@@ -138,7 +134,6 @@ export function cumulativeStatus(db: DbOrTx, courseId: number): CumulativeStatus
       ?.cadence ?? null;
   const ready = readyClasses(db, courseId);
   const existing = existingCumulatives(db, courseId, ready);
-  const taken = new Set(existing.map((e) => e.n));
 
   let due: CumulativeStatus["due"] = null;
   if (cadence !== null && cadence >= 1) {
@@ -147,10 +142,8 @@ export function cumulativeStatus(db: DbOrTx, courseId: number): CumulativeStatus
     const uncovered = ready.length - coveredCount;
     if (uncovered >= cadence) {
       const covered = ready.slice(0, coveredCount + cadence);
-      let n = 1;
-      while (taken.has(n)) n++;
       due = {
-        code: cumulativeCode(n),
+        code: nextReviewCode(db, courseId),
         coversThrough: covered.at(-1)!.number,
         classNumbers: covered.map((c) => c.number),
       };
@@ -174,9 +167,9 @@ export interface CumulativeTarget {
 }
 
 /**
- * Resolves a request: the given code (or, without one, the due review, or else the smallest free
- * review number covering all ready classes). Throws `ConflictError` when there is nothing to cover
- * or the review already exists.
+ * Resolves a request: the review is always the next one (`nextReviewCode`); a given code must equal
+ * it (this still allows retrying a failed review, whose code is unused). Throws `ConflictError`
+ * when there is nothing to cover or the code is not the next one.
  */
 export function resolveCumulativeTarget(
   db: DbOrTx,
@@ -187,26 +180,17 @@ export function resolveCumulativeTarget(
   const ready = readyClasses(db, courseId);
   const last = ready.at(-1);
   if (!last) throw new ConflictError("No class has a finished lesson yet");
-  const taken = new Set(status.existing.map((e) => parseCumulativeCode(e.code)));
 
-  let requested = code;
-  if (requested === undefined) {
-    if (status.due) requested = status.due.code;
-    else {
-      let n = 1;
-      while (taken.has(n)) n++;
-      requested = cumulativeCode(n);
-    }
+  const next = nextReviewCode(db, courseId);
+  if (code !== undefined && code !== next) {
+    throw new ConflictError(`Sledeći kumulativni test je ${next}`);
   }
-  const n = parseCumulativeCode(requested);
-  if (n === null) throw new ConflictError(`"${requested}" is not a cumulative review code`);
-  if (taken.has(n)) throw new ConflictError(`The review ${requested} already exists`);
 
-  if (status.due && status.due.code === requested) {
+  if (status.due && status.due.code === next) {
     const through = ready.find((c) => c.number === status.due!.coversThrough)!;
-    return { code: requested, throughClass: through, due: true };
+    return { code: next, throughClass: through, due: true };
   }
-  return { code: requested, throughClass: last, due: false };
+  return { code: next, throughClass: last, due: false };
 }
 
 /** Rows of the cumulative test schedule: every released review plus the due and the building ones. */

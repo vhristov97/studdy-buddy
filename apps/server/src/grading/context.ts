@@ -13,7 +13,7 @@ import {
 } from "../db/schema.js";
 import { getLessonView } from "../repositories/lessons.js";
 import { getFullQuiz } from "../repositories/quizzes.js";
-import { nextFreeCumulativeCode, parseCumulativeCode } from "../quiz/cumulative.js";
+import { nextReviewCode, parseCumulativeCode } from "../quiz/cumulative.js";
 import { toTopicInput, type BacklogItem, type QuizTopicInput } from "../quiz/context.js";
 
 export type GradingTopic = QuizTopicInput & { classNumber: number };
@@ -53,8 +53,8 @@ export interface GradingContext {
   /** Topics the plan left out of the quiz (resolved to topic rows); they go to the backlog as left_out. */
   leftOutTopics: (GradingTopic & { reason: string })[];
   /**
-   * The cumulative quiz a gap found here is mandatory in: a "K<n>" that does not exist yet (see
-   * {@link nextCumulativeCode}); for a cumulative quiz "K<n>" itself, the next free one after it.
+   * The cumulative quiz a gap found here is mandatory in: the next review of the course, the
+   * smallest "K<n>" with no released quiz (see {@link nextCumulativeCode}).
    */
   nextCumulativeCode: string;
   /** Cross-course observations about the student, oldest first (the newest {@link MAX_OBSERVATIONS}). */
@@ -107,18 +107,12 @@ export function loadNextSteps(db: Db, courseId: number): string[] {
 }
 
 /**
- * The review a gap found in this class is mandatory in: the smallest `K<n>` above every existing
- * review of the course and, with a cadence, no earlier than the one scheduled for the class
- * (n = ceil(classNumber / cadence)). Never the code of a review that already exists.
+ * The review a gap found while grading is mandatory in: the next review of the course (the
+ * smallest `K<n>` with no released quiz), which is also the one the schedule calls for next. For a
+ * graded cumulative quiz that quiz exists, so it is naturally skipped.
  */
-export function nextCumulativeCode(
-  db: Db,
-  courseId: number,
-  classNumber: number,
-  cadence: number | null,
-): string {
-  const scheduled = cadence === null || cadence < 1 ? 1 : Math.ceil(classNumber / cadence);
-  return nextFreeCumulativeCode(db, courseId, { atLeast: scheduled });
+export function nextCumulativeCode(db: Db, courseId: number): string {
+  return nextReviewCode(db, courseId);
 }
 
 interface ClassEntry {
@@ -170,10 +164,8 @@ export function loadGradingContext(db: Db, submissionId: number): GradingContext
 
   const currentClass =
     quizRow.classId === null ? undefined : classes.find((c) => c.id === quizRow.classId);
-  // A cumulative quiz "K<n>" belongs to no class: it counts as following the latest class, and the
-  // review that follows it is K<n+1>.
+  // A cumulative quiz "K<n>" belongs to no class: it counts as following the latest class.
   const reviewNumber = quizRow.classId === null ? parseCumulativeCode(quizRow.code) : null;
-  const classNumber = currentClass?.number ?? Math.max(1, ...classes.map((c) => c.number));
   const earlier = classes
     .filter((c) => (currentClass ? c.number < currentClass.number : true))
     .reverse(); // most recent first
@@ -269,10 +261,7 @@ export function loadGradingContext(db: Db, submissionId: number): GradingContext
     topics,
     questionTopics,
     leftOutTopics,
-    nextCumulativeCode:
-      reviewNumber === null
-        ? nextCumulativeCode(db, courseRow.id, classNumber, courseRow.reviewCadence)
-        : nextFreeCumulativeCode(db, courseRow.id, { after: reviewNumber }),
+    nextCumulativeCode: nextCumulativeCode(db, courseRow.id),
     observations: loadObservations(db),
     backlog: loadBacklog(db, courseRow.id),
     nextSteps: loadNextSteps(db, courseRow.id),

@@ -286,7 +286,7 @@ describe("cumulative review branch", () => {
     // released: a duplicate
     const dup = await post({ code: "K1" });
     expect(dup.statusCode).toBe(409);
-    expect(dup.json().error.message).toContain("already exists");
+    expect(dup.json().error.message).toContain("Sledeći kumulativni test je K2");
     expect(kJobs()).toHaveLength(1);
 
     expect((await post({}, 999)).statusCode).toBe(404);
@@ -328,18 +328,21 @@ describe("cumulative review branch", () => {
     ).toEqual(["K1", "K2"]);
   });
 
-  it("builds a manual review for a non-due code with a cadence (covering all ready classes)", async () => {
+  it("rejects an explicit code that is not the next one (codes stay gap-free), with a cadence too", async () => {
     addClasses(3);
     const response = await post({ code: "K4" });
-    expect(response.statusCode).toBe(202);
-    expect(response.json()).toMatchObject({ quizCode: "K4", classId: classIds[2] });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error.message).toContain("Sledeći kumulativni test je K1");
+    expect(kJobs()).toHaveLength(0);
+
+    // The next code is accepted (it is the due one, covering two classes), then K2 follows.
+    const ok = await post({ code: "K1" });
+    expect(ok.statusCode).toBe(202);
+    expect(ok.json()).toMatchObject({ quizCode: "K1", classId: classIds[1] });
     await waitFor(() => finished(1));
-    expect(db().select().from(quiz).get()).toMatchObject({ code: "K4", classId: null });
-    // K4 covered classes 1..3, so nothing is due until two more classes are ready; then the
-    // smallest unused code, K1, is
-    expect((await status()).due).toBeNull();
+    expect(db().select().from(quiz).get()).toMatchObject({ code: "K1", classId: null });
     addClasses(5);
-    expect((await status()).due).toMatchObject({ code: "K1", coversThrough: 5 });
+    expect((await status()).due).toMatchObject({ code: "K2", coversThrough: 4 });
   });
 
   it("shows the schedule: due, building, available, submitted, graded", async () => {
