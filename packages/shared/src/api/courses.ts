@@ -62,6 +62,10 @@ export const ClassSummary = z.object({
   number: z.number().int(),
   title: z.string(),
   status: ClassStatus,
+  /** Number of PDF/HTML materials. */
+  materialCount: z.number().int(),
+  /** Number of Markdown notes. */
+  noteCount: z.number().int(),
   /** ISO 8601. */
   createdAt: z.string(),
 });

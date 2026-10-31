@@ -1,4 +1,4 @@
-import { asc, count, desc, eq, getTableColumns, max } from "drizzle-orm";
+import { asc, count, desc, eq, getTableColumns, max, sql } from "drizzle-orm";
 import type {
   ClassDetail,
   ClassSummary,
@@ -10,7 +10,7 @@ import type {
   UpdateCourseInput,
 } from "@studdy/shared";
 import type { Db } from "../db/client.js";
-import { classTable, course } from "../db/schema.js";
+import { classTable, course, material } from "../db/schema.js";
 import { ConflictError, isUniqueViolation } from "./conflict.js";
 import { listMaterials } from "./materials.js";
 
@@ -33,15 +33,48 @@ function toCourseSummary(row: CourseRow, classCount: number): CourseSummary {
   };
 }
 
-function toClassSummary(row: ClassRow): ClassSummary {
+interface ClassCounts {
+  materialCount: number;
+  noteCount: number;
+}
+
+function toClassSummary(row: ClassRow, counts: ClassCounts): ClassSummary {
   return {
     id: row.id,
     courseId: row.courseId,
     number: row.number,
     title: row.title,
     status: row.status,
+    materialCount: counts.materialCount,
+    noteCount: counts.noteCount,
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+const NO_FILES: ClassCounts = { materialCount: 0, noteCount: 0 };
+
+/** Classes with their file counts, in one grouped query. */
+function selectClassSummaries(db: Db) {
+  return db
+    .select({
+      ...getTableColumns(classTable),
+      materialCount:
+        sql<number>`coalesce(sum(case when ${material.kind} = 'material' then 1 else 0 end), 0)`.mapWith(
+          Number,
+        ),
+      noteCount:
+        sql<number>`coalesce(sum(case when ${material.kind} = 'note' then 1 else 0 end), 0)`.mapWith(
+          Number,
+        ),
+    })
+    .from(classTable)
+    .leftJoin(material, eq(material.classId, classTable.id))
+    .groupBy(classTable.id);
+}
+
+function getClassSummary(db: Db, id: number): ClassSummary | undefined {
+  const row = selectClassSummaries(db).where(eq(classTable.id, id)).get();
+  return row && toClassSummary(row, row);
 }
 
 function selectCourseSummaries(db: Db) {
@@ -70,13 +103,11 @@ export function listCourses(db: Db): CourseSummary[] {
 export function getCourse(db: Db, id: number): CourseDetail | undefined {
   const summary = getCourseSummary(db, id);
   if (!summary) return undefined;
-  const classes = db
-    .select()
-    .from(classTable)
+  const classes = selectClassSummaries(db)
     .where(eq(classTable.courseId, id))
     .orderBy(asc(classTable.number))
     .all()
-    .map(toClassSummary);
+    .map((row) => toClassSummary(row, row));
   return { ...summary, classes };
 }
 
@@ -143,7 +174,7 @@ export function createClass(
         .values({ courseId, number, title: input.title })
         .returning()
         .get();
-      return toClassSummary(created);
+      return toClassSummary(created, NO_FILES);
     });
   } catch (err) {
     if (isUniqueViolation(err)) throw classNumberConflict(input.number ?? 0);
@@ -152,30 +183,25 @@ export function createClass(
 }
 
 export function getClass(db: Db, id: number): ClassDetail | undefined {
-  const row = db
-    .select({ ...getTableColumns(classTable), courseName: course.name })
-    .from(classTable)
-    .innerJoin(course, eq(course.id, classTable.courseId))
-    .where(eq(classTable.id, id))
+  const summary = getClassSummary(db, id);
+  if (!summary) return undefined;
+  const owner = db
+    .select({ name: course.name })
+    .from(course)
+    .where(eq(course.id, summary.courseId))
     .get();
-  return (
-    row && {
-      ...toClassSummary(row),
-      courseName: row.courseName,
-      materials: listMaterials(db, row.id),
-    }
-  );
+  if (!owner) return undefined;
+  return { ...summary, courseName: owner.name, materials: listMaterials(db, id) };
 }
 
 export function updateClass(db: Db, id: number, input: UpdateClassInput): ClassSummary | undefined {
   try {
-    const row = db
+    const { changes } = db
       .update(classTable)
       .set({ title: input.title, number: input.number })
       .where(eq(classTable.id, id))
-      .returning()
-      .get();
-    return row && toClassSummary(row);
+      .run();
+    return changes > 0 ? getClassSummary(db, id) : undefined;
   } catch (err) {
     if (isUniqueViolation(err)) throw classNumberConflict(input.number ?? 0);
     throw err;

@@ -100,7 +100,7 @@ Dependencies: M0 → M1 → M2 → M3, then M4 ∥ M7 (M5 can start once the M4 
 ### M2: Courses, classes, materials
 - [x] M2.1 Schema + CRUD API for courses (name, persona?, assessment format?, review cadence?) and classes.
 - [x] M2.2 Upload API: PDF/HTML materials (required) and `.md` notes (optional). Content-addressed store. Text extraction: PDF via `pdfjs-dist` with noise stripping (spec §4), HTML via sanitize + `turndown`.
-- [ ] M2.3 UI: course list/create, course page with classes, class page with uploads, a material viewer (PDF.js viewer, sandboxed iframe for HTML, rendered Markdown for notes, "show extracted text" toggle). No editing after generation.
+- [x] M2.3 UI: course list/create, course page with classes, class page with uploads, a material viewer (PDF.js viewer, sandboxed iframe for HTML, rendered Markdown for notes, "show extracted text" toggle). No editing after generation.
 
 ### M3: Combined notes
 - [ ] M3.1 lesson-writer prompt + output schema (`lessonMd`, `topics[]` with misconceptions found in notes, deferred flag). Works with no notes.

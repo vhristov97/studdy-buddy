@@ -1,25 +1,16 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
-import { App } from "./App";
-
-function renderAt(path: string) {
-  return render(
-    <MemoryRouter initialEntries={[path]}>
-      <App />
-    </MemoryRouter>,
-  );
-}
+import { apiError, mockApi, renderAt } from "./test/utils";
 
 function mockHealth(ok: boolean) {
-  const fetchMock = vi.fn(async () =>
-    ok
-      ? new Response(JSON.stringify({ status: "ok", db: "ok" }), { status: 200 })
-      : Promise.reject(new TypeError("network down")),
-  );
-  vi.stubGlobal("fetch", fetchMock);
-  return fetchMock;
+  return mockApi({
+    "GET /api/courses": () => [],
+    "GET /api/health": () => {
+      if (!ok) throw new TypeError("network down");
+      return { status: "ok", db: "ok" };
+    },
+  }).fetchMock;
 }
 
 describe("home page", () => {
@@ -27,7 +18,7 @@ describe("home page", () => {
     mockHealth(true);
     renderAt("/");
     expect(screen.getByRole("heading", { name: "Kursevi" })).toBeInTheDocument();
-    expect(screen.getByText("Još nema kurseva.")).toBeInTheDocument();
+    expect(await screen.findByText("Još nema kurseva.")).toBeInTheDocument();
     expect(screen.getByText("Studdy Buddy")).toBeInTheDocument();
     await screen.findByText("Server: povezan");
   });
@@ -46,10 +37,10 @@ describe("home page", () => {
   });
 
   it("shows nedostupan on a non-2xx response", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("{}", { status: 503 })),
-    );
+    mockApi({
+      "GET /api/courses": () => [],
+      "GET /api/health": () => apiError(503, "internal", "down"),
+    });
     renderAt("/");
     expect(await screen.findByText("Server: nedostupan")).toBeInTheDocument();
   });

@@ -7,6 +7,7 @@ import {
   ApiErrorBody,
   ClassDetail,
   ClassSummary,
+  CourseDetail,
   CourseSummary,
   MaterialDetail,
   MaterialSummary,
@@ -160,6 +161,45 @@ describe("materials API", () => {
 
       const detail = ClassDetail.parse((await json("GET", `/api/classes/${cls.id}`)).json());
       expect(detail.materials).toEqual(list);
+    });
+
+    it("reports material and note counts on the class and in the course's class list", async () => {
+      const course = await createCourse();
+      const first = await createClass(course.id, "Prvo");
+      const second = await createClass(course.id, "Drugo");
+      expect(first).toMatchObject({ materialCount: 0, noteCount: 0 });
+      const created = await uploadOk(first.id, [
+        { name: "a.pdf", content: await makePdf("A") },
+        { name: "b.html", content: "<p>B</p>" },
+        { name: "n.md", content: "# N" },
+      ]);
+
+      const detail = ClassDetail.parse((await json("GET", `/api/classes/${first.id}`)).json());
+      expect(detail).toMatchObject({ materialCount: 2, noteCount: 1 });
+
+      const courseDetail = CourseDetail.parse(
+        (await json("GET", `/api/courses/${course.id}`)).json(),
+      );
+      expect(courseDetail.classes.map((c) => [c.id, c.materialCount, c.noteCount])).toEqual([
+        [first.id, 2, 1],
+        [second.id, 0, 0],
+      ]);
+
+      const renamed = ClassSummary.parse(
+        (
+          await t.app.inject({
+            method: "PATCH",
+            url: `/api/classes/${first.id}`,
+            payload: { title: "Preimenovano" },
+          })
+        ).json(),
+      );
+      expect(renamed).toMatchObject({ materialCount: 2, noteCount: 1 });
+
+      const note = created.find((m) => m.kind === "note");
+      await json("DELETE", `/api/materials/${note?.id}`);
+      const after = ClassDetail.parse((await json("GET", `/api/classes/${first.id}`)).json());
+      expect(after).toMatchObject({ materialCount: 2, noteCount: 0 });
     });
 
     it("returns the extracted text in the material detail", async () => {

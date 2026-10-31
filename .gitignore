@@ -12,3 +12,6 @@ samples/**
 !samples/**/
 !samples/**/.gitkeep
 !samples/README.md
+
+# UI screenshots from manual checks (may show private course material)
+screenshots/
