@@ -50,6 +50,10 @@
   font-weight: 600;
 }
 
+.idle {
+  color: var(--color-text-muted);
+}
+
 .meta {
   display: flex;
   flex-wrap: wrap;

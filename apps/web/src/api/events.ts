@@ -24,8 +24,9 @@ function parse(event: Event): PipelineEvent | null {
 
 /**
  * Live pipeline state of a class over SSE. The stream is only open while `enabled` (the class is
- * generating or a job is running); the server replays every job on (re)connect. A job event that
- * differs from what the query cache holds refetches the class, its course, jobs and lesson.
+ * generating or a job is running) or a job seen on it still runs; the server replays every job on
+ * (re)connect. A job event that differs from what the query cache holds refetches the class, its
+ * course, jobs and lesson.
  * The state is per hook instance: give the caller a `key` when `classId` can change.
  */
 export function useClassEvents(classId: number, enabled: boolean): ClassEvents {
@@ -35,8 +36,12 @@ export function useClassEvents(classId: number, enabled: boolean): ClassEvents {
   const seen = useRef(new Map<number, GenerationJob>());
   const lastStatus = useRef<string | null>(null);
 
+  // A job seen running keeps the stream open even if `enabled` lapses first (e.g. the lesson
+  // finishes and the class turns `ready` just before the quiz job shows up in a refetch).
+  const active = enabled || [...state.jobs.values()].some((job) => job.status === "running");
+
   useEffect(() => {
-    if (!enabled || typeof EventSource === "undefined") return;
+    if (!active || typeof EventSource === "undefined") return;
     const source = new EventSource(`/api/classes/${classId}/events`);
 
     const onJob = (event: Event) => {
@@ -73,7 +78,7 @@ export function useClassEvents(classId: number, enabled: boolean): ClassEvents {
       source.removeEventListener("progress", onProgress);
       source.close();
     };
-  }, [classId, enabled, client]);
+  }, [classId, active, client]);
 
   return state;
 }

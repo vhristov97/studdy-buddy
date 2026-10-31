@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
-import type { ClassStatus, GenerationJob } from "@studdy/shared";
+import type { ClassStatus, GenerationJob, QuizSummary } from "@studdy/shared";
+import { ApiError } from "../api/client";
 import { useClassEvents } from "../api/events";
-import { useClassJobs } from "../api/hooks";
-import { groupJobs, JOB_KIND_LABELS, mergeJobs } from "../lib/pipeline";
-import { formatCount, formatDuration, plural } from "../lib/format";
+import { useClassJobs, useCourseQuizzes, useRegenerateQuiz } from "../api/hooks";
+import { groupJobs, JOB_KIND_LABELS, mergeJobs, stageLabel } from "../lib/pipeline";
+import { countQuestions, formatCount, formatDuration, plural } from "../lib/format";
 import { Button } from "./Button";
+import { ErrorMessage } from "./ErrorMessage";
 import { Spinner } from "./Spinner";
 import styles from "./PipelinePanel.module.css";
 
@@ -21,6 +23,7 @@ function useNow(active: boolean): number {
 
 interface PanelProps {
   classId: number;
+  courseId: number;
   classStatus: ClassStatus;
   /** Shows a "Pokušaj ponovo" button on a failed stage; leave out where retrying is offered elsewhere. */
   onRetry?: () => void;
@@ -31,7 +34,7 @@ interface PanelProps {
  * Pipeline status of a class: its jobs from the API, kept live over SSE while something runs.
  * Renders nothing until the class has a job. Give it a `key` per class.
  */
-export function PipelinePanel({ classId, classStatus, onRetry, retrying }: PanelProps) {
+export function PipelinePanel({ classId, courseId, classStatus, onRetry, retrying }: PanelProps) {
   const jobsQuery = useClassJobs(classId, classStatus !== "draft");
   const fetched = jobsQuery.data;
   const generating =
@@ -39,6 +42,9 @@ export function PipelinePanel({ classId, classStatus, onRetry, retrying }: Panel
   const live = useClassEvents(classId, generating === true);
   const jobs = mergeJobs(fetched ?? [], live.jobs, classId);
   const now = useNow(jobs.some((job) => job.status === "running"));
+  const startQuiz = useRegenerateQuiz(classId);
+  const latestQuiz = jobs.find((job) => job.kind === "quiz");
+  const quizzes = useCourseQuizzes(courseId, latestQuiz?.status === "succeeded");
 
   if (jobs.length === 0) return null;
   return (
@@ -48,8 +54,16 @@ export function PipelinePanel({ classId, classStatus, onRetry, retrying }: Panel
       now={now}
       onRetry={classStatus === "failed" ? onRetry : undefined}
       retrying={retrying}
+      releasedQuiz={quizzes.data?.find((quiz) => quiz.classId === classId)}
+      onStartQuiz={classStatus === "ready" ? () => startQuiz.mutate() : undefined}
+      startingQuiz={startQuiz.isPending}
+      startQuizError={startQuiz.isError ? startQuizErrorText(startQuiz.error) : null}
     />
   );
+}
+
+function startQuizErrorText(error: unknown): string {
+  return error instanceof ApiError ? error.message : "Pravljenje kviza nije uspelo.";
 }
 
 interface StagesProps {
@@ -59,10 +73,38 @@ interface StagesProps {
   now: number;
   onRetry?: () => void;
   retrying?: boolean;
+  /** The released quiz of this class, if known; shown on a succeeded quiz job. */
+  releasedQuiz?: QuizSummary;
+  /**
+   * Starts the quiz again (failed job) or for the first time (class generated before quizzes
+   * existed). Leave out unless the class is ready.
+   */
+  onStartQuiz?: () => void;
+  startingQuiz?: boolean;
+  startQuizError?: string | null;
 }
 
-export function PipelineStages({ jobs, progress, now, onRetry, retrying }: StagesProps) {
+export function PipelineStages({
+  jobs,
+  progress,
+  now,
+  onRetry,
+  retrying,
+  releasedQuiz,
+  onStartQuiz,
+  startingQuiz,
+  startQuizError,
+}: StagesProps) {
   const groups = groupJobs(jobs);
+  const lessonDone = groups.some(
+    ({ kind, latest }) => kind === "lesson" && latest.status === "succeeded",
+  );
+  const offerFirstQuiz = onStartQuiz && lessonDone && !groups.some(({ kind }) => kind === "quiz");
+  const quizButton = (label: string) => (
+    <Button variant="primary" onClick={onStartQuiz} disabled={startingQuiz}>
+      {label}
+    </Button>
+  );
   return (
     <section className={styles.panel} aria-labelledby="pipeline-heading">
       <h2 id="pipeline-heading" className={styles.heading}>
@@ -77,11 +119,18 @@ export function PipelineStages({ jobs, progress, now, onRetry, retrying }: Stage
                 label={JOB_KIND_LABELS[kind]}
                 chars={progress.get(latest.id)}
                 now={now}
+                released={kind === "quiz" ? releasedQuiz : undefined}
               />
-              {latest.status === "failed" && onRetry && (
+              {kind === "lesson" && latest.status === "failed" && onRetry && (
                 <Button variant="primary" onClick={onRetry} disabled={retrying}>
                   Pokušaj ponovo
                 </Button>
+              )}
+              {kind === "quiz" && latest.status === "failed" && onStartQuiz && (
+                <>
+                  {quizButton("Napravi kviz ispočetka")}
+                  {startQuizError && <ErrorMessage>{startQuizError}</ErrorMessage>}
+                </>
               )}
               {earlier.length > 0 && (
                 <details className={styles.earlier}>
@@ -99,6 +148,18 @@ export function PipelineStages({ jobs, progress, now, onRetry, retrying }: Stage
               )}
             </li>
           ))}
+          {offerFirstQuiz && (
+            <li className={styles.stage}>
+              <div className={styles.row}>
+                <div className={styles.head}>
+                  <strong className={styles.label}>{JOB_KIND_LABELS.quiz}</strong>
+                  <span className={styles.idle}>Još nije napravljen</span>
+                </div>
+              </div>
+              {quizButton("Napravi kviz")}
+              {startQuizError && <ErrorMessage>{startQuizError}</ErrorMessage>}
+            </li>
+          )}
         </ul>
       </div>
     </section>
@@ -111,12 +172,15 @@ interface RowProps {
   /** Output so far; shown only while the job runs. */
   chars?: number;
   now: number;
+  /** The quiz this (succeeded) job released. */
+  released?: QuizSummary;
 }
 
-function JobRow({ job, label, chars, now }: RowProps) {
+function JobRow({ job, label, chars, now, released }: RowProps) {
   const running = job.status === "running";
   const end = job.finishedAt ? Date.parse(job.finishedAt) : now;
   const duration = formatDuration(end - Date.parse(job.createdAt));
+  const step = running ? stageLabel(job) : null;
   return (
     <div className={styles.row}>
       <div className={styles.head}>
@@ -130,6 +194,10 @@ function JobRow({ job, label, chars, now }: RowProps) {
         )}
       </div>
       <p className={styles.meta}>
+        {step && <span>{step}</span>}
+        {job.status === "succeeded" && released && (
+          <span>{`${released.code} · ${countQuestions(released.questionCount)}`}</span>
+        )}
         {job.attempt > 1 && <span>pokušaj {job.attempt}</span>}
         <span>{duration}</span>
         {running && chars !== undefined && chars > 0 && (

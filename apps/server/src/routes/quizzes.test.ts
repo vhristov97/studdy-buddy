@@ -284,6 +284,51 @@ describe("quiz routes", () => {
     expect(ApiErrorBody.parse(again.json()).error.code).toBe("conflict");
   });
 
+  it("starts the first quiz of a ready class generated before the quiz branch existed", async () => {
+    t.handle.db.update(classTable).set({ status: "ready" }).where(eq(classTable.id, classId)).run();
+    t.handle.db.insert(lesson).values({ classId, bodyMd: "Lekcija." }).run();
+    t.handle.db
+      .insert(topic)
+      .values(
+        LESSON.topics.map((item, position) => ({
+          courseId,
+          classId,
+          name: item.name,
+          position,
+          deferred: item.deferred,
+          deferredNote: item.deferredNote,
+        })),
+      )
+      .run();
+    const lessonJob = t.handle.db
+      .insert(generationJob)
+      .values({
+        classId,
+        kind: "lesson",
+        stage: "lesson-writer",
+        status: "succeeded",
+        attempt: 1,
+        finishedAt: new Date(),
+      })
+      .returning({ id: generationJob.id })
+      .get().id;
+    const { calls } = script([APPROVED]);
+
+    const res = await post(`/api/classes/${classId}/quiz/regenerate`);
+    expect(res.statusCode).toBe(202);
+    const started = GenerationJob.parse(res.json());
+    expect(started).toMatchObject({ kind: "quiz", attempt: 1, status: "running" });
+    expect(
+      t.handle.db.select().from(generationJob).where(eq(generationJob.id, started.id)).get()!
+        .parentJobId,
+    ).toBe(lessonJob);
+    await waitFor(
+      async () => ((await get(`/api/courses/${courseId}/quizzes`)).body as unknown[]).length === 1,
+    );
+    expect(calls).toEqual(["quiz_plan", "quiz_draft", "quiz_review"]);
+    expect((await post(`/api/classes/${classId}/quiz/regenerate`)).statusCode).toBe(409);
+  });
+
   it("answers the regenerate endpoint with 404, 409 and 400", async () => {
     expect((await post("/api/classes/9999/quiz/regenerate")).statusCode).toBe(404);
     expect((await post("/api/classes/abc/quiz/regenerate")).statusCode).toBe(400);

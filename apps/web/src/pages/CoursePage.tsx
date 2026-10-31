@@ -1,17 +1,32 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
-import type { ClassSummary, CourseDetail } from "@studdy/shared";
+import type { ClassSummary, CourseDetail, QuizSummary } from "@studdy/shared";
 import { ApiError } from "../api/client";
-import { useCourse, useCreateClass, useDeleteCourse, useUpdateCourse } from "../api/hooks";
-import { StatusBadge } from "../components/Badge";
+import {
+  useCourse,
+  useCourseQuizzes,
+  useCreateClass,
+  useDeleteCourse,
+  useUpdateCourse,
+} from "../api/hooks";
+import { Badge, StatusBadge } from "../components/Badge";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { Button } from "../components/Button";
 import { ClassForm } from "../components/ClassForm";
 import { ConfirmDialog, Dialog } from "../components/Dialog";
 import { CourseForm } from "../components/CourseForm";
 import { EmptyState } from "../components/EmptyState";
+import { ErrorMessage } from "../components/ErrorMessage";
 import { QueryBoundary } from "../components/QueryBoundary";
-import { cadenceLabel, countMaterials, countNotes, formatClassNumber } from "../lib/format";
+import { Spinner } from "../components/Spinner";
+import {
+  cadenceLabel,
+  countMaterials,
+  countNotes,
+  countQuestions,
+  formatClassNumber,
+  formatDate,
+} from "../lib/format";
 import styles from "./CoursePage.module.css";
 
 export function CoursePage() {
@@ -74,7 +89,10 @@ function CourseView({ course }: { course: CourseDetail }) {
       <h2>Predavanja</h2>
       <ClassList classes={course.classes} />
 
-      <h2 className={styles.addHeading}>Dodaj predavanje</h2>
+      <h2 className={styles.sectionHeading}>Kvizovi</h2>
+      <QuizList courseId={course.id} />
+
+      <h2 className={styles.sectionHeading}>Dodaj predavanje</h2>
       <ClassForm
         inline
         resetOnSuccess
@@ -141,5 +159,48 @@ function ClassList({ classes }: { classes: ClassSummary[] }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+function QuizList({ courseId }: { courseId: number }) {
+  const query = useCourseQuizzes(courseId);
+  if (query.isPending) return <Spinner />;
+  if (query.isError) return <ErrorMessage>Kvizovi se nisu učitali.</ErrorMessage>;
+  if (query.data.length === 0) {
+    return (
+      <EmptyState message="Još nema kvizova. Kviz se pravi automatski posle objedinjenih beleški." />
+    );
+  }
+
+  return (
+    <ul className={styles.classes}>
+      {query.data.map((item) => (
+        <QuizItem key={item.id} quiz={item} />
+      ))}
+    </ul>
+  );
+}
+
+function QuizItem({ quiz }: { quiz: QuizSummary }) {
+  return (
+    <li className={styles.quizItem}>
+      <div className={styles.quizHead}>
+        <strong className={styles.quizCode}>{quiz.code}</strong>
+        <span className={styles.quizTitle}>{quiz.title}</span>
+      </div>
+      <p className={styles.counts}>{quiz.subtitle}</p>
+      {quiz.chips.length > 0 && (
+        <ul className={styles.chips} aria-label="Oznake">
+          {quiz.chips.map((chip) => (
+            <li key={chip}>
+              <Badge>{chip}</Badge>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className={styles.counts}>
+        {countQuestions(quiz.questionCount)} · {formatDate(quiz.createdAt)}
+      </p>
+    </li>
   );
 }

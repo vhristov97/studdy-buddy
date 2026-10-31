@@ -6,6 +6,21 @@ export const JOB_KIND_LABELS: Record<JobKind, string> = {
   quiz: "Kviz",
 };
 
+/** Pipeline position of each kind; the panel lists its rows in this order. M7 adds the viz kinds. */
+export const JOB_KIND_ORDER: readonly JobKind[] = ["lesson", "quiz"];
+
+/** Step label per stage name, given the review cycle of the job. M7 adds the viz stages. */
+const STAGE_LABELS: Record<string, (cycle: number | null) => string> = {
+  "quiz-planner": () => "Planiranje",
+  "quiz-builder": (cycle) => (cycle === null ? "Izrada" : `Ispravke (krug ${cycle})`),
+  "quiz-reviewer": (cycle) => `Provera (krug ${cycle ?? 1})`,
+};
+
+/** The current step of a job, or null for stages that need no detail (the lesson). */
+export function stageLabel(job: Pick<GenerationJob, "stage" | "cycle">): string | null {
+  return STAGE_LABELS[job.stage]?.(job.cycle) ?? null;
+}
+
 /**
  * Jobs from the query and from the live stream, newest first. The stream wins unless the query
  * already saw the job finish while the stream's copy is still "running" (e.g. after a reconnect).
@@ -32,11 +47,11 @@ export interface JobGroup {
   earlier: GenerationJob[];
 }
 
-/** One group per kind, ordered by the id of its latest job. */
+/** One group per kind, in pipeline order (lesson first). */
 export function groupJobs(jobs: readonly GenerationJob[]): JobGroup[] {
   const byKind = new Map<JobKind, GenerationJob[]>();
   for (const job of jobs) byKind.set(job.kind, [...(byKind.get(job.kind) ?? []), job]);
   return [...byKind.entries()]
     .map(([kind, list]) => ({ kind, latest: list[0]!, earlier: list.slice(1) }))
-    .sort((a, b) => a.latest.id - b.latest.id);
+    .sort((a, b) => JOB_KIND_ORDER.indexOf(a.kind) - JOB_KIND_ORDER.indexOf(b.kind));
 }

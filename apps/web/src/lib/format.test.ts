@@ -5,8 +5,10 @@ import {
   countMaterials,
   countNotes,
   countPages,
+  countQuestions,
   formatBytes,
   formatCount,
+  formatDate,
   formatDuration,
   plural,
   pluralForm,
@@ -108,5 +110,19 @@ describe("formatDuration", () => {
       "3 min 05 s",
       "0 s",
     ]);
+  });
+});
+
+describe("countQuestions", () => {
+  it("declines pitanje/pitanja", () => {
+    expect(countQuestions(1)).toBe("1 pitanje");
+    expect(countQuestions(8)).toBe("8 pitanja");
+    expect(countQuestions(20)).toBe("20 pitanja");
+  });
+});
+
+describe("formatDate", () => {
+  it("formats day, month and year without padding", () => {
+    expect(formatDate("2026-03-05T12:00:00.000Z")).toBe("5. 3. 2026.");
   });
 });

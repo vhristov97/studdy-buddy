@@ -358,8 +358,7 @@ describe("quiz branch", () => {
   });
 
   describe("regeneration", () => {
-    it("is refused unless the last quiz job failed", async () => {
-      expect(() => t.pipeline!.requestQuizRegeneration(classId)).toThrow(/no quiz job/);
+    it("is refused unless the last quiz job failed or is absent", async () => {
       expect(() => t.pipeline!.requestQuizRegeneration(9999)).toThrow(/Class not found/);
 
       startBranch();
@@ -369,6 +368,43 @@ describe("quiz branch", () => {
       db().update(classTable).set({ status: "failed" }).where(eq(classTable.id, classId)).run();
       expect(() => t.pipeline!.requestQuizRegeneration(classId)).toThrow(/no finished lesson/);
       expect(quizJobs()).toHaveLength(1);
+    });
+
+    it("starts the first quiz of a ready class that never had a quiz job", async () => {
+      expect(quizJobs()).toHaveLength(0);
+      const started = t.pipeline!.requestQuizRegeneration(classId);
+      expect(started).toMatchObject({
+        kind: "quiz",
+        status: "running",
+        attempt: 1,
+        stage: "quiz-planner",
+        cycle: null,
+      });
+      const lessonJob = db()
+        .select()
+        .from(generationJob)
+        .where(eq(generationJob.kind, "lesson"))
+        .get()!;
+      expect(quizJobs()[0]!.parentJobId).toBe(lessonJob.id);
+      await waitFor(() => types().includes(DOMAIN_EVENTS.QUIZ_RELEASED));
+      expect(quizzes()).toHaveLength(1);
+      expect(() => t.pipeline!.requestQuizRegeneration(classId)).toThrow(/already generated/);
+    });
+
+    it("is refused when a quiz was released although no quiz job exists", () => {
+      db()
+        .insert(quiz)
+        .values({
+          courseId,
+          classId,
+          code: "P98",
+          title: "T",
+          subtitle: "S",
+          chipsJson: [],
+          questionsJson: [],
+        })
+        .run();
+      expect(() => t.pipeline!.requestQuizRegeneration(classId)).toThrow(/already has a released/);
     });
 
     it("is refused while the quiz job is running", async () => {

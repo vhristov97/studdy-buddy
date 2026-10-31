@@ -48,8 +48,9 @@ export interface Pipeline {
   /** Starts the lesson stage for a `draft` or `failed` class. Throws 404/409 `ApiError`s. */
   requestGeneration(classId: number): GenerationJob;
   /**
-   * Re-plans and rebuilds the quiz of a `ready` class whose last quiz job failed (the quiz branch
-   * itself starts on `lesson.ready`). Throws 404/409 `ApiError`s.
+   * Starts, or re-plans and rebuilds, the quiz of a `ready` class with no released quiz whose
+   * latest quiz job failed or is absent (the quiz branch itself starts on `lesson.ready`). Throws
+   * 404/409 `ApiError`s.
    */
   requestQuizRegeneration(classId: number): GenerationJob;
   /**

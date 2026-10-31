@@ -110,7 +110,7 @@ Dependencies: M0 → M1 → M2 → M3, then M4 ∥ M7 (M5 can start once the M4 
 ### M4: Quiz branch
 - [x] M4.1 Shared Zod schemas: QuizPlan, Quiz, Question (`mc`/`num`/`match`/`open`). The validator from §7.3, with tests.
 - [x] M4.2 quiz-planner (inputs: lesson, topics with history, backlog, observations), quiz-builder and quiz-reviewer prompts.
-- [ ] M4.3 Review loop (validator + reviewer, ≤3 cycles with the same builder), release to the quiz library, failure + regeneration flow. Plans never leave the server.
+- [x] M4.3 Review loop (validator + reviewer, ≤3 cycles with the same builder), release to the quiz library, failure + regeneration flow. Plans never leave the server.
 
 ### M5: Quiz player
 - [ ] M5.1 Player per spec §8: picker (newest preselected), all four question types, "Ne znam" on every question, metadata, autosave (fault-tolerant localStorage), progress bar, two-step submit, instant feedback for closed questions, score line, reset, JSON fallback with copy button.

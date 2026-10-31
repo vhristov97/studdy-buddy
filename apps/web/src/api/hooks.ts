@@ -11,6 +11,7 @@ import type {
   LessonView,
   MaterialDetail,
   MaterialSummary,
+  QuizSummary,
   UpdateClassInput,
   UpdateCourseInput,
 } from "@studdy/shared";
@@ -61,6 +62,15 @@ export function useClassJobs(classId: number, enabled = true) {
   return useQuery({
     queryKey: queryKeys.classJobs(classId),
     queryFn: async () => (await apiGet<ClassJobs>(`/api/classes/${classId}/jobs`)).jobs,
+    enabled,
+  });
+}
+
+/** Released quizzes of a course, newest first. */
+export function useCourseQuizzes(courseId: number, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.courseQuizzes(courseId),
+    queryFn: () => apiGet<QuizSummary[]>(`/api/courses/${courseId}/quizzes`),
     enabled,
   });
 }
@@ -180,6 +190,17 @@ export function useGenerate(classId: number) {
   return useMutation({
     mutationFn: () => apiPost<GenerationJob>(`/api/classes/${classId}/generate`),
     // A failed POST (e.g. 409) may still mean the class changed under us.
+    onSettled: () => invalidateClassAndCourse(client, classId),
+  });
+}
+
+/** Starts the quiz of a ready class, or builds it again from scratch after a failed attempt. */
+export function useRegenerateQuiz(classId: number) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiPost<GenerationJob>(`/api/classes/${classId}/quiz/regenerate`),
+    // A failed POST (e.g. 409) may still mean the jobs changed under us. The "courses" prefix
+    // covers the course's quiz library.
     onSettled: () => invalidateClassAndCourse(client, classId),
   });
 }

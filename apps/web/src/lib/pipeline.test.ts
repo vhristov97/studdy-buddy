@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { job } from "../test/utils";
-import { groupJobs, mergeJobs } from "./pipeline";
+import { groupJobs, mergeJobs, stageLabel } from "./pipeline";
 
 describe("mergeJobs", () => {
   it("lets the live copy win and sorts newest first", () => {
@@ -36,5 +36,22 @@ describe("groupJobs", () => {
     const [group] = groupJobs([job({ id: 3 }), job({ id: 2 }), job({ id: 1 })]);
     expect(group?.latest.id).toBe(3);
     expect(group?.earlier.map((j) => j.id)).toEqual([2, 1]);
+  });
+});
+
+describe("groupJobs order", () => {
+  it("lists the lesson before the quiz regardless of ids", () => {
+    const groups = groupJobs([job({ id: 9, kind: "quiz" }), job({ id: 3, kind: "lesson" })]);
+    expect(groups.map((g) => g.kind)).toEqual(["lesson", "quiz"]);
+  });
+});
+
+describe("stageLabel", () => {
+  it("labels the quiz steps and nothing else", () => {
+    expect(stageLabel({ stage: "quiz-planner", cycle: null })).toBe("Planiranje");
+    expect(stageLabel({ stage: "quiz-builder", cycle: null })).toBe("Izrada");
+    expect(stageLabel({ stage: "quiz-builder", cycle: 3 })).toBe("Ispravke (krug 3)");
+    expect(stageLabel({ stage: "quiz-reviewer", cycle: 2 })).toBe("Provera (krug 2)");
+    expect(stageLabel({ stage: "lesson-writer", cycle: null })).toBeNull();
   });
 });

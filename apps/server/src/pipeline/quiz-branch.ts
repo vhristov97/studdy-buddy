@@ -49,8 +49,9 @@ export interface QuizBranchOptions {
 
 export interface QuizBranch {
   /**
-   * Re-plans and rebuilds the quiz of a class whose last quiz job failed. Throws 404/409
-   * `ApiError`s.
+   * Starts (or re-plans and rebuilds) the quiz of a `ready` class that has no released quiz and
+   * whose latest quiz job failed or does not exist (classes generated before the quiz branch).
+   * Throws 404/409 `ApiError`s.
    */
   requestRegeneration(classId: number): GenerationJob;
 }
@@ -74,6 +75,8 @@ class QuizReviewFailedError extends Error {
     this.name = "QuizReviewFailedError";
   }
 }
+
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export function registerQuizBranch({
   db,
@@ -103,11 +106,7 @@ export function registerQuizBranch({
   }
 
   /** Inserts a running quiz job for the class and returns its id. Call inside a transaction. */
-  function insertQuizJob(
-    tx: Parameters<Parameters<Db["transaction"]>[0]>[0],
-    classId: number,
-    parentJobId: number | null,
-  ): number {
+  function insertQuizJob(tx: Tx, classId: number, parentJobId: number | null): number {
     const previous = tx
       .select({ attempt: generationJob.attempt })
       .from(generationJob)
@@ -129,6 +128,18 @@ export function registerQuizBranch({
       .get().id;
   }
 
+  function latestLessonJobId(tx: Tx, classId: number): number | null {
+    return (
+      tx
+        .select({ id: generationJob.id })
+        .from(generationJob)
+        .where(and(eq(generationJob.classId, classId), eq(generationJob.kind, "lesson")))
+        .orderBy(desc(generationJob.id))
+        .limit(1)
+        .get()?.id ?? null
+    );
+  }
+
   function requestRegeneration(classId: number): GenerationJob {
     const jobId = db.transaction((tx) => {
       const cls = tx.select().from(classTable).where(eq(classTable.id, classId)).get();
@@ -141,9 +152,10 @@ export function registerQuizBranch({
         .orderBy(desc(generationJob.id))
         .limit(1)
         .get();
-      if (!last) throw new ConflictError("The class has no quiz job to regenerate");
-      if (last.status === "running") throw new ConflictError("The quiz is already generating");
-      if (last.status !== "failed") throw new ConflictError("The quiz was already generated");
+      if (last?.status === "running") throw new ConflictError("The quiz is already generating");
+      if (last && last.status !== "failed") {
+        throw new ConflictError("The quiz was already generated");
+      }
       const released = tx
         .select({ id: quizTable.id })
         .from(quizTable)
@@ -151,7 +163,7 @@ export function registerQuizBranch({
         .limit(1)
         .get();
       if (released) throw new ConflictError("The class already has a released quiz");
-      return insertQuizJob(tx, classId, last.id);
+      return insertQuizJob(tx, classId, last?.id ?? latestLessonJobId(tx, classId));
     });
     emitJob(jobId);
     const payload: QuizRequestedPayload = { classId, jobId };
@@ -161,16 +173,9 @@ export function registerQuizBranch({
 
   /** `lesson.ready`: opens the quiz job of the freshly generated class. */
   function startQuizJob({ classId }: LessonReadyPayload): void {
-    const jobId = db.transaction((tx) => {
-      const lessonJob = tx
-        .select({ id: generationJob.id })
-        .from(generationJob)
-        .where(and(eq(generationJob.classId, classId), eq(generationJob.kind, "lesson")))
-        .orderBy(desc(generationJob.id))
-        .limit(1)
-        .get();
-      return insertQuizJob(tx, classId, lessonJob?.id ?? null);
-    });
+    const jobId = db.transaction((tx) =>
+      insertQuizJob(tx, classId, latestLessonJobId(tx, classId)),
+    );
     emitJob(jobId);
     const payload: QuizRequestedPayload = { classId, jobId };
     coordinator.emit(DOMAIN_EVENTS.QUIZ_REQUESTED, payload);
