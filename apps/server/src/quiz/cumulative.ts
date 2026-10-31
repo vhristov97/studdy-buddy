@@ -122,6 +122,28 @@ export function nextReviewCode(db: DbOrTx, courseId: number): string {
 }
 
 /**
+ * The label for a gap found in class `classNumber`: the code of the next review that will cover
+ * that class. The next unused code (`nextReviewCode`) when the class is within what that review
+ * covers (with a cadence: every class up to one cadence step past what existing reviews cover;
+ * without one: all ready classes), otherwise the code after it. Informational only: a review's
+ * required items are decided by coverage, never by this label.
+ */
+export function reviewCodeForClass(db: DbOrTx, courseId: number, classNumber: number): string {
+  const next = nextReviewCode(db, courseId);
+  const cadence =
+    db.select({ cadence: course.reviewCadence }).from(course).where(eq(course.id, courseId)).get()
+      ?.cadence ?? null;
+  if (cadence === null || cadence < 1) return next;
+  const ready = readyClasses(db, courseId);
+  const last = Math.max(0, ...existingCumulatives(db, courseId, ready).map((e) => e.coversThrough));
+  const coveredCount = ready.filter((c) => c.number <= last).length;
+  // Ready classes up to and including this one that the next review would have to take in.
+  const upToClass = ready.filter((c) => c.number <= classNumber).length;
+  if (upToClass <= coveredCount + cadence) return next;
+  return cumulativeCode(parseCumulativeCode(next)! + 1);
+}
+
+/**
  * The course's cumulative review state (spec §11). Coverage-based: `last` is the highest class
  * number any existing review covers; with a cadence a review is due once at least `cadence` ready
  * classes lie beyond it, whether earlier reviews were scheduled or requested by hand. It covers

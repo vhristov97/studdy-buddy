@@ -512,7 +512,7 @@ describe("cumulative review (K) planning", () => {
   it("uses the cumulative instruction and the persona", () => {
     const instruction = buildQuizPlannerInstruction("iskusni inženjer", "cumulative");
     expect(instruction).toContain("cumulative review quiz");
-    expect(instruction).toContain("EVERY backlog item that is due");
+    expect(instruction).toContain("EVERY backlog item marked");
     expect(instruction).toContain("iskusni inženjer");
     expect(buildQuizPlannerInstruction(null, "cumulative")).not.toContain("also");
     expect(quizPlannerSpec(cumulativeCtxFixture()).instruction).toContain("cumulative review");
@@ -562,7 +562,7 @@ describe("cumulative review (K) planning", () => {
     const ctx = cumulativeCtxFixture({
       backlog: [
         dueItem("Skladišta podataka", 1),
-        dueItem("Batch obrada", 2, { dueQuiz: "K2" }), // due later: not required
+        dueItem("Batch obrada", 2, { dueQuiz: "K2" }), // stale label, covered class: required
         dueItem("Lambda arhitektura", 2, { deferred: true }), // deferred: not required
       ],
     });
@@ -574,8 +574,23 @@ describe("cumulative review (K) planning", () => {
       p.questions[5]!.ref = "Predavanje 2 › Odeljak";
     });
     expect(kIssues(missing, ctx)).toContain(
-      'Backlog items due in K1 have no question: "Skladišta podataka" (predavanje 1)',
+      'Backlog items required in K1 have no question: "Skladišta podataka" (predavanje 1)',
     );
+  });
+
+  it("requires an item whose dueQuiz label names another review, when its class is covered", () => {
+    const ctx = cumulativeCtxFixture({
+      backlog: [dueItem("Batch obrada", 2, { dueQuiz: "K2" })],
+    });
+    const without = kMutated((p) => {
+      for (const q of p.questions) {
+        if (q.topic === "Batch obrada") q.topic = "Stream obrada";
+      }
+    });
+    expect(kIssues(without, ctx)).toContain(
+      'Backlog items required in K1 have no question: "Batch obrada" (predavanje 2)',
+    );
+    expect(kIssues(cumulativePlanFixture(), ctx)).toBe("");
   });
 
   it("does not demand note misconceptions or lesson-quiz ordering", () => {
@@ -619,9 +634,9 @@ describe("cumulative review (K) planning", () => {
     expect(message).toContain('<ranija_lekcija predavanje="2">');
     expect(message).toContain("Stream obrada (predavanje 2) [ocena: ~]");
     expect(message).toContain("Skladišta podataka (predavanje 01) — OBAVEZNO u K1");
-    expect(message).toContain("Batch obrada (predavanje 02) — dospeva u K2 (nije obavezno ovde)");
+    expect(message).toContain("Batch obrada (predavanje 02) — OBAVEZNO u K1");
     expect(message).toContain("Lambda arhitektura (predavanje 02) (odloženo");
-    expect(message).toContain("Obavezne stavke za K1: 1");
+    expect(message).toContain("Obavezne stavke za K1: 2");
     expect(message).toContain("Računanje je slabije.");
     expect(message).toContain("Napravi plan kumulativnog pregleda K1");
   });

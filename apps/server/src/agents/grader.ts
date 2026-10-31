@@ -46,7 +46,7 @@ Write every text field in Serbian, Latin script, with correct diacritics (č, ć
    - A question the student "knew" only by luck cannot be detected; do not guess.
 4. Misconceptions from the student's notes (history entries with source "notes") that this submission shows are now fixed, because the student answered a question that targeted them correctly, go to correctFixes (topic and the misconception text copied from the history). Only list a fix when a correct answer actually demonstrates it.
 5. Update the learner model. Every topic of the quiz (the list in the message) gets exactly one topicUpdates entry with its classNumber, a rating and a short note. Rating: ✗ (weak) when the student got a misconception or mostly gaps on it, ~ (partial) when answers were mixed or an open answer was incomplete, ✓ (good) when all its questions were answered correctly. A topic with a single correct answer on an easy question is ✓ only when the question tested the concept itself. The note says what happened in a few words (for example "P02: pogrešno q3 (zabluda), ne znam q7").
-6. Update the backlog for the next cumulative quiz, whose code is given in the message. backlogAdd: every topic you rated ✗ or ~ because of misconceptions goes in with reason "weak"; a topic with gaps ("Ne znam") goes in with reason "gap"; every topic the plan left out (listed in the message) goes in with reason "left_out", with classNumber from that list. dueQuiz must be exactly the given code. One entry per topic. backlogResolve: topics now solid (rated ✓) that are on the current backlog; use their topic name and classNumber.
+6. Update the backlog for the next cumulative quiz, whose code is given in the message. backlogAdd: every topic you rated ✗ or ~ because of misconceptions goes in with reason "weak"; a topic with gaps ("Ne znam") goes in with reason "gap"; every topic the plan left out (listed in the message) goes in with reason "left_out", with classNumber from that list. dueQuiz must be exactly the code given for its topic's class (see "Šifra pregleda po predavanju" in the message). One entry per topic. backlogResolve: topics now solid (rated ✓) that are on the current backlog; use their topic name and classNumber.
 7. Observations about the student (observations): only new, general patterns the evidence of this submission supports, shared across all courses (for example that calculations are weaker, that open answers skip enumerations and the lecturer's analogies, that the student uses "Ne znam" honestly, that repeated topics from earlier classes still fail). Do not repeat an observation that is already listed. Leave the list empty when there is nothing new and general.
 8. Write the new "Sledeće" list (nextSteps): the FULL, ordered replacement of the current list, at least one entry. Typical order: teach the gap topics first (name them), then oral follow-ups on the weak open questions (name the question and what to practise: the full structure, the enumeration), then re-test each misconception from a new angle, then the next class to process or the next cumulative quiz. Keep old entries that are still true; drop those this grading settled.
 9. Write the results write-up (writeupMd) in Markdown, addressed to the student, with these parts in this order:
@@ -60,7 +60,7 @@ Write every text field in Serbian, Latin script, with correct diacritics (č, ć
 
 # Self-check before answering
 
-Check that: every open_pending question has one grade; every miss has exactly one item and nothing else has one; no gap has a misconception text and no misconception item lacks one; every quiz topic has exactly one topicUpdates entry; dueQuiz is the given code; every left-out topic is on backlogAdd; topic names are copied exactly; nextSteps is not empty; the write-up tables match the items.
+Check that: every open_pending question has one grade; every miss has exactly one item and nothing else has one; no gap has a misconception text and no misconception item lacks one; every quiz topic has exactly one topicUpdates entry; dueQuiz is the code given for its topic's class; every left-out topic is on backlogAdd; topic names are copied exactly; nextSteps is not empty; the write-up tables match the items.
 
 # Output
 
@@ -184,12 +184,22 @@ function renderQuestion(ctx: GradingContext, q: Question, index: number): string
   return lines.join("\n");
 }
 
+/** The `dueQuiz` label the grader must write for a class: the context's per-class code, else the next review. */
+function dueQuizOf(ctx: GradingContext, classNumber: number): string {
+  return ctx.dueQuizByClass[classNumber] ?? ctx.nextCumulativeCode;
+}
+
 export function buildGraderMessage(ctx: GradingContext): string {
   const header = [
     `Kurs: ${ctx.course.name}`,
     `Kviz ${ctx.quiz.code}: ${ctx.quiz.title} (${ctx.quiz.subtitle})`,
     `Predato: ${ctx.submission.submittedAt}`,
     `Šifra sledećeg kumulativnog kviza: ${ctx.nextCumulativeCode}`,
+    `Šifra pregleda po predavanju (dueQuiz): ${
+      Object.entries(ctx.dueQuizByClass)
+        .map(([n, code]) => `predavanje ${n} → ${code}`)
+        .join(", ") || ctx.nextCumulativeCode
+    }`,
   ];
   if (ctx.course.assessmentFormat !== null) {
     header.push(`Format ocenjivanja:\n${ctx.course.assessmentFormat}`);
@@ -538,9 +548,10 @@ export function gradingResultSchema(ctx: GradingContext): z.ZodType<GradingResul
     result.backlogAdd.forEach((b, i) => {
       const key = pairKey(b.topic, b.classNumber);
       const at = (field: string): (string | number)[] => ["backlogAdd", i, field];
-      if (b.dueQuiz !== ctx.nextCumulativeCode) {
+      const expectedDue = dueQuizOf(ctx, b.classNumber);
+      if (b.dueQuiz !== expectedDue) {
         issue(
-          `backlogAdd: dueQuiz must be "${ctx.nextCumulativeCode}", not "${b.dueQuiz}".`,
+          `backlogAdd: dueQuiz must be "${expectedDue}" for classNumber ${b.classNumber}, not "${b.dueQuiz}".`,
           at("dueQuiz"),
         );
       }
@@ -577,7 +588,7 @@ export function gradingResultSchema(ctx: GradingContext): z.ZodType<GradingResul
         )
       ) {
         issue(
-          `backlogAdd: the plan left out "${t.name}" (classNumber ${t.classNumber}); add it with reason left_out and dueQuiz "${ctx.nextCumulativeCode}".`,
+          `backlogAdd: the plan left out "${t.name}" (classNumber ${t.classNumber}); add it with reason left_out and dueQuiz "${dueQuizOf(ctx, t.classNumber)}".`,
           ["backlogAdd"],
         );
       }

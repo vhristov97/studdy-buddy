@@ -390,6 +390,7 @@ describe("loadGradingContext", () => {
     expect(ctx.lessons.map((l) => l.classNumber)).toEqual([1, 2]);
     // The review after K1.
     expect(ctx.nextCumulativeCode).toBe("K2");
+    expect(ctx.dueQuizByClass).toEqual({ 1: "K2", 2: "K2" });
   });
 
   it("throws for a missing submission", () => {

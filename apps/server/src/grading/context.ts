@@ -13,7 +13,7 @@ import {
 } from "../db/schema.js";
 import { getLessonView } from "../repositories/lessons.js";
 import { getFullQuiz } from "../repositories/quizzes.js";
-import { nextReviewCode, parseCumulativeCode } from "../quiz/cumulative.js";
+import { nextReviewCode, parseCumulativeCode, reviewCodeForClass } from "../quiz/cumulative.js";
 import { toTopicInput, type BacklogItem, type QuizTopicInput } from "../quiz/context.js";
 
 export type GradingTopic = QuizTopicInput & { classNumber: number };
@@ -52,11 +52,14 @@ export interface GradingContext {
   questionTopics: { questionId: string; topic: string; classNumber: number }[];
   /** Topics the plan left out of the quiz (resolved to topic rows); they go to the backlog as left_out. */
   leftOutTopics: (GradingTopic & { reason: string })[];
-  /**
-   * The cumulative quiz a gap found here is mandatory in: the next review of the course, the
-   * smallest "K<n>" with no released quiz (see {@link nextCumulativeCode}).
-   */
+  /** The next review of the course: the smallest "K<n>" with no released quiz (see {@link nextCumulativeCode}). */
   nextCumulativeCode: string;
+  /**
+   * The `dueQuiz` label of a backlog item per class number (of the quiz's topics and left-out
+   * topics): the code of the next review that covers that class (see `reviewCodeForClass`). A
+   * class missing here takes {@link nextCumulativeCode}. Informational: reviews cover by class.
+   */
+  dueQuizByClass: Record<number, string>;
   /** Cross-course observations about the student, oldest first (the newest {@link MAX_OBSERVATIONS}). */
   observations: string[];
   /** The course's unresolved backlog items. */
@@ -107,9 +110,8 @@ export function loadNextSteps(db: Db, courseId: number): string[] {
 }
 
 /**
- * The review a gap found while grading is mandatory in: the next review of the course (the
- * smallest `K<n>` with no released quiz), which is also the one the schedule calls for next. For a
- * graded cumulative quiz that quiz exists, so it is naturally skipped.
+ * The next review of the course (the smallest `K<n>` with no released quiz), which is also the one
+ * the schedule calls for next. For a graded cumulative quiz that quiz exists, so it is naturally skipped.
  */
 export function nextCumulativeCode(db: Db, courseId: number): string {
   return nextReviewCode(db, courseId);
@@ -262,6 +264,12 @@ export function loadGradingContext(db: Db, submissionId: number): GradingContext
     questionTopics,
     leftOutTopics,
     nextCumulativeCode: nextCumulativeCode(db, courseRow.id),
+    dueQuizByClass: Object.fromEntries(
+      [...new Set([...topics, ...leftOutTopics].map((t) => t.classNumber))].map((n) => [
+        n,
+        reviewCodeForClass(db, courseRow.id, n),
+      ]),
+    ),
     observations: loadObservations(db),
     backlog: loadBacklog(db, courseRow.id),
     nextSteps: loadNextSteps(db, courseRow.id),

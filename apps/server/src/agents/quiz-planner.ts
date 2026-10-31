@@ -109,7 +109,7 @@ By default plan about 20-30 closed questions plus 3-5 open questions; scale with
 
 # Weighting
 
-- EVERY backlog item that is due in this review (marked "OBAVEZNO u <code>" in the message) must get at least one question on exactly that topic and class. This is mandatory, not a suggestion. Deferred backlog items are never tested.
+- EVERY backlog item marked "OBAVEZNO u <code>" in the message (all unresolved, non-deferred gaps of the covered classes) must get at least one question on exactly that topic and class. This is mandatory, not a suggestion. Deferred backlog items are never tested.
 - Topics rated ✗ or ~, and topics with misconceptions in their history, weigh the MOST: several questions each, each from a DIFFERENT angle than before (a new scenario, the question reversed, a rephrasing, a different concrete example). The goal is to learn the concept, not to memorize an earlier answer. A "Ne znam" (gap) is not a misconception: ask it plainly and build up.
 - Topics rated ✓ come back harder or as a comparison across classes (application in a scenario, edge cases, a neighbouring concept). Untested topics (?) are covered by importance; slides and (P) remarks that signal exam relevance weigh more.
 - Spread the questions across ALL covered classes; no covered class may be left without questions unless it has nothing testable.
@@ -220,9 +220,13 @@ function requiredMisconceptions(ctx: QuizContext): { topic: string; texts: strin
   return result;
 }
 
-/** True when a backlog item must be covered by the cumulative review: due in it and not deferred. */
-function isDueBacklog(item: QuizContext["backlog"][number], code: string): boolean {
-  return !item.deferred && item.dueQuiz === code;
+/**
+ * True when a backlog item must be covered by the cumulative review: not deferred. A cumulative
+ * context's backlog holds only the unresolved items of the covered classes, so every such item is
+ * required whatever its `dueQuiz` label says.
+ */
+function isRequiredBacklog(item: QuizContext["backlog"][number]): boolean {
+  return !item.deferred;
 }
 
 function buildCumulativePlannerMessage(ctx: QuizContext): string {
@@ -235,7 +239,7 @@ function buildCumulativePlannerMessage(ctx: QuizContext): string {
   if (ctx.course.assessmentFormat !== null) {
     header.push(`Format ocenjivanja:\n${ctx.course.assessmentFormat}`);
   }
-  const due = ctx.backlog.filter((b) => isDueBacklog(b, ctx.code));
+  const due = ctx.backlog.filter(isRequiredBacklog);
   const sections = [
     header.join("\n"),
     ...ctx.earlierLessons.map(
@@ -254,9 +258,7 @@ function buildCumulativePlannerMessage(ctx: QuizContext): string {
             if (b.deferred) {
               return `- ${where} (odloženo — ne testirati dok se ne obradi): ${b.reason}`;
             }
-            return isDueBacklog(b, ctx.code)
-              ? `- ${where} — OBAVEZNO u ${ctx.code}: ${b.reason}`
-              : `- ${where} — dospeva u ${b.dueQuiz} (nije obavezno ovde): ${b.reason}`;
+            return `- ${where} — OBAVEZNO u ${ctx.code}: ${b.reason}`;
           })
           .join("\n") +
         (due.length > 0
@@ -563,14 +565,14 @@ export function quizPlanSchema(ctx: QuizContext): z.ZodType<QuizPlan> {
     }
 
     if (cumulative) {
-      // Every backlog item due in this review (not deferred) needs a question on its topic and class.
+      // Every unresolved, non-deferred backlog item of a covered class needs a question on its topic and class.
       const covered = new Set(plan.questions.map((q) => JSON.stringify([q.topic, q.classNumber])));
       const missing = ctx.backlog.filter(
-        (b) => isDueBacklog(b, ctx.code) && !covered.has(JSON.stringify([b.topic, b.classNumber])),
+        (b) => isRequiredBacklog(b) && !covered.has(JSON.stringify([b.topic, b.classNumber])),
       );
       if (missing.length > 0) {
         issue(
-          `Backlog items due in ${ctx.code} have no question: ` +
+          `Backlog items required in ${ctx.code} have no question: ` +
             `${missing.map((b) => `"${b.topic}" (predavanje ${b.classNumber})`).join(", ")}. ` +
             "Add at least one question for each, with that topic name and that classNumber.",
           ["questions"],

@@ -54,6 +54,8 @@ export function PipelinePanel({ classId, courseId, classStatus, onRetry, retryin
   const now = useNow(jobs.some((job) => job.status === "running"));
   const startQuiz = useRegenerateQuiz(classId);
   const requestCumulative = useRequestCumulative(courseId);
+  // The failed review whose retry was pressed (the error is shown on its row).
+  const [rebuildCode, setRebuildCode] = useState<string | null>(null);
   // Cumulative (K) quiz jobs are separate from the class's own quiz.
   const hasSucceededQuiz = jobs.some((job) => job.kind === "quiz" && job.status === "succeeded");
   const grade = useGradeSubmission();
@@ -94,12 +96,17 @@ export function PipelinePanel({ classId, courseId, classStatus, onRetry, retryin
       retrying={retrying}
       releasedQuiz={quizzes.data?.find((quiz) => quiz.classId === classId)}
       cumulativeQuizzes={quizzes.data?.filter((quiz) => quiz.classId === null)}
-      onRebuildCumulative={(code) => requestCumulative.mutate(code)}
+      // The server builds the next review; a stale explicit code (a failed job from before the
+      // "next code only" rule) would be refused.
+      onRebuildCumulative={(code) => {
+        setRebuildCode(code);
+        requestCumulative.mutate(undefined);
+      }}
       rebuildingCumulative={requestCumulative.isPending}
       rebuildCumulativeError={
-        requestCumulative.isError && requestCumulative.variables !== undefined
+        requestCumulative.isError && rebuildCode !== null
           ? {
-              code: requestCumulative.variables,
+              code: rebuildCode,
               message: startQuizErrorText(requestCumulative.error),
             }
           : null

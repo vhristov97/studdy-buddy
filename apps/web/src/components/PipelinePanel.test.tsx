@@ -326,6 +326,29 @@ describe("PipelinePanel", () => {
     );
   });
 
+  it("retries a failed K job without a code, so the server builds the next review", async () => {
+    const { requests } = mockApi({
+      "GET /api/classes/5/jobs": () => ({
+        jobs: [
+          { ...quizJob({ ...FAILED, error: "K greška" }), quizCode: "K4" },
+          quizJob({ id: 4, status: "succeeded", finishedAt: "2026-01-01T10:00:55.000Z" }),
+          lessonDone(),
+        ],
+      }),
+      "POST /api/courses/1/cumulative": () => quizJob({ id: 9, attempt: 1 }),
+    });
+    renderPanel();
+    await userEvent.click(await screen.findByRole("button", { name: "Napravi ispočetka" }));
+    await waitFor(() =>
+      expect(requests).toContainEqual(
+        expect.objectContaining({ method: "POST", path: "/api/courses/1/cumulative" }),
+      ),
+    );
+    const post = requests.find((r) => r.path === "/api/courses/1/cumulative")!;
+    // no explicit code (a stale one would be refused as not the next review)
+    expect(post.body).toBeUndefined();
+  });
+
   it("shows the server message when the regeneration is refused", async () => {
     mockApi({
       "GET /api/classes/5/jobs": () => ({ jobs: [lessonDone()] }),

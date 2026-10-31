@@ -22,6 +22,7 @@ import {
   nextReviewCode,
   parseCumulativeCode,
   resolveCumulativeTarget,
+  reviewCodeForClass,
 } from "./cumulative.js";
 
 let dir: string;
@@ -371,7 +372,61 @@ describe("cumulativeSchedule: grading status", () => {
   });
 });
 
+describe("reviewCodeForClass", () => {
+  it("labels with the next review when the class is within its coverage, else with the one after", () => {
+    const courseId = addCourse(4);
+    const ids = [1, 2, 3, 4, 5].map((n) => addClass(courseId, n));
+    // K1 (due) covers 1-4; class 5 is left for K2
+    for (const n of [1, 2, 3, 4]) expect(reviewCodeForClass(db(), courseId, n)).toBe("K1");
+    expect(reviewCodeForClass(db(), courseId, 5)).toBe("K2");
+    // after K1 (covering 1-4) is released, K2 is next and class 5 is within it
+    addK(courseId, "K1", ids[3]!);
+    expect(reviewCodeForClass(db(), courseId, 5)).toBe("K2");
+    expect(reviewCodeForClass(db(), courseId, 2)).toBe("K2");
+  });
+
+  it("is the next review for every class without a cadence", () => {
+    const courseId = addCourse(null);
+    [1, 2, 3, 4, 5].forEach((n) => addClass(courseId, n));
+    expect(reviewCodeForClass(db(), courseId, 5)).toBe("K1");
+  });
+
+  it("stays within the next review while fewer classes than a cadence step are ready", () => {
+    const courseId = addCourse(4);
+    [1, 2].forEach((n) => addClass(courseId, n));
+    expect(reviewCodeForClass(db(), courseId, 2)).toBe("K1");
+  });
+});
+
 describe("loadCumulativeContext", () => {
+  it("requires by coverage: a later-class gap labelled K1 is not in K1 but is in K2; a stale label of a covered class stays", () => {
+    const courseId = addCourse(4);
+    const ids = [1, 2, 3, 4, 5].map((n) => addClass(courseId, n));
+    const t2 = addTopic(courseId, ids[1]!, 0, "Stara oznaka");
+    const t5 = addTopic(courseId, ids[4]!, 0, "Kasni jaz");
+    db()
+      .insert(backlogItem)
+      .values([
+        { courseId, topicId: t2, dueQuiz: "K1", reason: "gap" },
+        { courseId, topicId: t5, dueQuiz: reviewCodeForClass(db(), courseId, 5), reason: "gap" },
+      ])
+      .run();
+    expect(
+      db()
+        .select()
+        .from(backlogItem)
+        .all()
+        .map((b) => b.dueQuiz),
+    ).toEqual(["K1", "K2"]);
+    const k1 = loadCumulativeContext(db(), courseId, "K1");
+    expect(k1.backlog.map((b) => b.topic)).toEqual(["Stara oznaka"]);
+    addK(courseId, "K1", ids[3]!);
+    // K1 is released: its stale-labelled covered-class item (K1) is still required in K2
+    const k2 = loadCumulativeContext(db(), courseId, "K2");
+    expect(k2.coveredClasses.map((c) => c.classNumber)).toEqual([1, 2, 3, 4, 5]);
+    expect(k2.backlog.map((b) => b.topic)).toEqual(["Stara oznaka", "Kasni jaz"]);
+  });
+
   it("collects the lessons, all non-deferred topics and the unresolved backlog of the covered classes", () => {
     const courseId = addCourse(2);
     const c1 = addClass(courseId, 1);
