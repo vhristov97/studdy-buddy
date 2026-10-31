@@ -14,7 +14,7 @@ import type { SemanticEvent } from "@mozaik-ai/core";
 import { buildQuizBuilderMessage, openQuizBuilderSession } from "../src/agents/quiz-builder.js";
 import { planQuiz } from "../src/agents/quiz-planner.js";
 import { reviewQuiz } from "../src/agents/quiz-reviewer.js";
-import { initAgentRuntime, warnIfTelemetryOn } from "../src/agents/runtime.js";
+import { initAgentRuntime } from "../src/agents/runtime.js";
 import { StageError } from "../src/agents/stage.js";
 import { config } from "../src/config.js";
 import { openDatabase } from "../src/db/client.js";
@@ -50,13 +50,13 @@ console.log(
     `Planner ${config.MODEL_PLANNER}, builder ${config.MODEL_BUILDER}.`,
 );
 
-const logger = {
-  warn(obj: object, msg: string): void {
-    console.warn(`\n[runner warn] ${msg}`, obj);
+initAgentRuntime({
+  logger: {
+    warn(obj: object, msg: string): void {
+      console.warn(`\n[runner warn] ${msg}`, obj);
+    },
   },
-};
-initAgentRuntime({ logger });
-warnIfTelemetryOn(logger);
+});
 
 let streamEvents = 0;
 const onEvent = (event: SemanticEvent): void => {

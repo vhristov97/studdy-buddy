@@ -97,5 +97,5 @@ npm run smoke:agent    # tiny real-API check of the agent stack
 
 - Course material stays on your machine, except for what is sent to the Anthropic API (or the gateway in `ANTHROPIC_BASE_URL`) to generate content.
 - Mozaik's bundled cloud SDK uploads all agent events, including full agent memory (your study materials), to app.jigjoy.ai if `MOZAIK_API_KEY` or `MOZAIK_PROJECT_KEY` is set (environment or `.env`) or the machine is paired (`~/.mozaik/credentials.json`).
-- This is allowed (a hackathon decision). The server logs a warning at startup when it is on. To keep everything local, leave those keys unset and don't pair the machine.
+- The server refuses to start with those keys present unless you opt in with `MOZAIK_CLOUD_ENABLED=true`. Without the opt-in it also ignores a paired machine's credentials.
 - Tests force telemetry off, so they never upload anything.

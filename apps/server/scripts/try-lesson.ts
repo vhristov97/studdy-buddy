@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { asc, eq } from "drizzle-orm";
-import { initAgentRuntime, warnIfTelemetryOn } from "../src/agents/runtime.js";
+import { initAgentRuntime } from "../src/agents/runtime.js";
 import { StageError } from "../src/agents/stage.js";
 import { writeLesson, type LessonSource } from "../src/agents/lesson-writer.js";
 import { config } from "../src/config.js";
@@ -76,7 +76,6 @@ const logger = {
   },
 };
 initAgentRuntime({ logger });
-warnIfTelemetryOn(logger);
 
 let streamEvents = 0;
 const started = performance.now();

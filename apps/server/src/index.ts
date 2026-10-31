@@ -1,6 +1,6 @@
 import { buildApp } from "./app.js";
 import { Coordinator } from "./agents/coordinator.js";
-import { initAgentRuntime, warnIfTelemetryOn } from "./agents/runtime.js";
+import { initAgentRuntime } from "./agents/runtime.js";
 import { config } from "./config.js";
 import { migrate, openDatabase } from "./db/client.js";
 import { createPipeline } from "./pipeline/pipeline.js";
@@ -59,7 +59,6 @@ try {
     { anthropicHost: new URL(config.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com").host },
     "Anthropic endpoint",
   );
-  warnIfTelemetryOn(app.log);
 } catch (err) {
   app.log.error(err);
   close();

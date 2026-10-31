@@ -10,7 +10,7 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import type { SemanticEvent } from "@mozaik-ai/core";
 import { gradeSubmission } from "../src/agents/grader.js";
-import { initAgentRuntime, warnIfTelemetryOn } from "../src/agents/runtime.js";
+import { initAgentRuntime } from "../src/agents/runtime.js";
 import { StageError } from "../src/agents/stage.js";
 import { config } from "../src/config.js";
 import { openDatabase } from "../src/db/client.js";
@@ -50,13 +50,13 @@ console.log(
     `${ctx.nextCumulativeCode}. Grader ${config.MODEL_PLANNER}.`,
 );
 
-const logger = {
-  warn(obj: object, msg: string): void {
-    console.warn(`\n[runner warn] ${msg}`, obj);
+initAgentRuntime({
+  logger: {
+    warn(obj: object, msg: string): void {
+      console.warn(`\n[runner warn] ${msg}`, obj);
+    },
   },
-};
-initAgentRuntime({ logger });
-warnIfTelemetryOn(logger);
+});
 
 let streamEvents = 0;
 const onEvent = (event: SemanticEvent): void => {

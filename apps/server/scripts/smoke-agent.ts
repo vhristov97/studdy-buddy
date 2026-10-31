@@ -7,7 +7,7 @@
 import { parseArgs } from "node:util";
 import { z } from "zod";
 import { config } from "../src/config.js";
-import { initAgentRuntime, warnIfTelemetryOn } from "../src/agents/runtime.js";
+import { initAgentRuntime } from "../src/agents/runtime.js";
 import { StageError, openStageSession, runStage, type StageSpec } from "../src/agents/stage.js";
 
 const STEPS = ["a", "b", "c"] as const;
@@ -76,7 +76,6 @@ const logger = {
   },
 };
 initAgentRuntime({ logger });
-warnIfTelemetryOn(logger);
 
 const models = values.model
   ? [values.model]
