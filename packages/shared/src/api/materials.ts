@@ -10,6 +10,8 @@ export type ExtractionStatus = z.infer<typeof ExtractionStatus>;
 
 /** Largest accepted upload, per file. */
 export const MAX_MATERIAL_SIZE_BYTES = 50 * 1024 * 1024;
+/** Largest accepted upload request, summed over all its files (the server buffers them in memory). */
+export const MAX_UPLOAD_TOTAL_BYTES = 100 * 1024 * 1024;
 
 export interface AcceptedFileType {
   mime: string;

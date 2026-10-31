@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { structureSlideLines, type SlideLine } from "./slide-structure.js";
+import {
+  structurePositionedLines,
+  structureSlideLines,
+  type SlideLine,
+} from "./slide-structure.js";
 
 const bullet = (text: string, x: number, height = 16, textX = x + 20): SlideLine => ({
   text,
@@ -142,6 +146,22 @@ describe("structureSlideLines", () => {
         plain("još", 40),
       ]),
     ).toEqual(["red", "još"]);
+  });
+
+  it("keeps each line's vertical position, a wrapped bullet keeping the bullet's", () => {
+    const at = (line: SlideLine, position: number): SlideLine => ({ ...line, position });
+    expect(
+      structurePositionedLines([
+        at(plain("Naslov", 40, 30), 0.05),
+        at(bullet("stavka", 80), 0.3),
+        at(plain("nastavak", 100), 0.35),
+        at(plain("podnožje", 40, 10), 0.95),
+      ]),
+    ).toEqual([
+      { text: "## Naslov", position: 0.05 },
+      { text: "- stavka nastavak", position: 0.3 },
+      { text: "podnožje", position: 0.95 },
+    ]);
   });
 
   it("returns nothing for an empty page", () => {

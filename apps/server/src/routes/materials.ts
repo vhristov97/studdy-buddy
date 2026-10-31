@@ -6,13 +6,20 @@ import type { FastifyPluginAsync } from "fastify";
 import {
   ACCEPTED_FILE_TYPES,
   MAX_MATERIAL_SIZE_BYTES,
+  MAX_UPLOAD_TOTAL_BYTES,
   type MaterialKind,
   type MaterialSummary,
 } from "@studdy/shared";
 import type { Db } from "../db/client.js";
 import { classTable } from "../db/schema.js";
 import { extractText } from "../extraction/index.js";
-import { deleteUnreferencedFiles, resolveStoredPath, saveFile } from "../files/store.js";
+import {
+  deleteUnreferencedFiles,
+  hashBuffer,
+  reserveHashes,
+  resolveStoredPath,
+  saveFile,
+} from "../files/store.js";
 import {
   deleteMaterial,
   findExistingHashes,
@@ -27,6 +34,8 @@ import { ApiError, notFound, parseId } from "./errors.js";
 export interface MaterialRouteOptions {
   db: Db;
   dataDir: string;
+  /** Cap on the summed size of one upload request; defaults to `MAX_UPLOAD_TOTAL_BYTES`. */
+  maxUploadBytes?: number;
 }
 
 interface ClassParams {
@@ -42,7 +51,7 @@ const LOCKED_MESSAGE = "Class materials can't be changed after generation";
 const HTML_CSP = "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'";
 const MAX_EXTRACTION_ERROR_LENGTH = 500;
 const MAX_NAME_LENGTH = 255;
-const MAX_FILES_PER_UPLOAD = 20;
+const MAX_FILES_PER_UPLOAD = 10;
 
 interface UploadedFile {
   originalName: string;
@@ -102,7 +111,7 @@ function validateUpload(rawName: string, buffer: Buffer): UploadedFile {
 
 export const materialRoutes: FastifyPluginAsync<MaterialRouteOptions> = async (
   app,
-  { db, dataDir },
+  { db, dataDir, maxUploadBytes = MAX_UPLOAD_TOTAL_BYTES },
 ) => {
   // Registered here, not on the root app, so its request hooks only run for these routes.
   await app.register(fastifyMultipart, {
@@ -117,24 +126,49 @@ export const materialRoutes: FastifyPluginAsync<MaterialRouteOptions> = async (
     }
 
     const uploads: UploadedFile[] = [];
+    let totalBytes = 0;
     for await (const part of request.parts()) {
       if (part.type !== "file") continue;
       if (part.fieldname !== "files") {
         throw new ApiError(400, "validation", `Unexpected file field "${part.fieldname}"`);
       }
-      const buffer = await part.toBuffer();
-      uploads.push(validateUpload(part.filename, buffer));
+      // Count while reading, so an oversized request stops before buffering more of it.
+      const chunks: Buffer[] = [];
+      for await (const chunk of part.file as AsyncIterable<Buffer>) {
+        totalBytes += chunk.length;
+        if (totalBytes > maxUploadBytes) {
+          throw new ApiError(
+            413,
+            "validation",
+            `Upload is larger than ${Math.round(maxUploadBytes / (1024 * 1024))} MB in total`,
+          );
+        }
+        chunks.push(chunk);
+      }
+      if (part.file.truncated) {
+        throw new ApiError(
+          413,
+          "validation",
+          `${cleanFileName(part.filename)} is larger than ${MAX_MATERIAL_SIZE_BYTES / (1024 * 1024)} MB`,
+        );
+      }
+      uploads.push(validateUpload(part.filename, Buffer.concat(chunks)));
     }
     if (uploads.length === 0) {
       throw new ApiError(400, "validation", 'No files were uploaded (use the "files" field)');
     }
 
-    const saved = uploads.map((upload) => ({
-      upload,
-      ...saveFile(dataDir, upload.buffer, upload.ext),
-    }));
-    const hashes = saved.map((file) => file.sha256);
+    // Reserve before saving: another class may delete its last reference to the same content
+    // while this request is still extracting, and must not unlink the file we are about to use.
+    const hashes = uploads.map((upload) => hashBuffer(upload.buffer));
+    const release = reserveHashes(hashes);
+    const savedHashes: string[] = [];
     try {
+      const saved = uploads.map((upload) => {
+        const file = saveFile(dataDir, upload.buffer, upload.ext);
+        savedHashes.push(file.sha256);
+        return { upload, ...file };
+      });
       const duplicates = findExistingHashes(db, classId, hashes);
       const seen = new Set<string>();
       for (const file of saved) {
@@ -185,11 +219,15 @@ export const materialRoutes: FastifyPluginAsync<MaterialRouteOptions> = async (
       const created: MaterialSummary[] = insertMaterials(db, classId, rows);
       return reply.code(201).send(created);
     } catch (err) {
-      // Don't leave files behind that no row references.
-      deleteUnreferencedFiles(db, dataDir, hashes, (cleanupErr) =>
+      // Don't leave files behind that no row references; only those this request saved, and
+      // after releasing, because cleanup skips reserved hashes.
+      release();
+      deleteUnreferencedFiles(db, dataDir, savedHashes, (cleanupErr) =>
         request.log.warn({ err: cleanupErr }, "could not remove an unreferenced file"),
       );
       throw err;
+    } finally {
+      release();
     }
   });
 

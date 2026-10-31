@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { ACCEPTED_FILE_TYPES, MAX_MATERIAL_SIZE_BYTES, MaterialDetail } from "./materials";
+import {
+  ACCEPTED_FILE_TYPES,
+  MAX_MATERIAL_SIZE_BYTES,
+  MAX_UPLOAD_TOTAL_BYTES,
+  MaterialDetail,
+} from "./materials";
 
 describe("accepted file types", () => {
   it("maps extensions to a mime type and kind", () => {
@@ -12,6 +17,7 @@ describe("accepted file types", () => {
 
   it("allows 50 MB per file", () => {
     expect(MAX_MATERIAL_SIZE_BYTES).toBe(50 * 1024 * 1024);
+    expect(MAX_UPLOAD_TOTAL_BYTES).toBe(100 * 1024 * 1024);
   });
 });
 

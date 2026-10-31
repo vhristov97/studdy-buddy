@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { classTable, course, material } from "../db/schema.js";
 import { createTestApp, type TestApp } from "../test/app.js";
-import { deleteFileIfUnreferenced, resolveStoredPath, saveFile } from "./store.js";
+import { deleteFileIfUnreferenced, reserveHashes, resolveStoredPath, saveFile } from "./store.js";
 
 describe("file store", () => {
   let t: TestApp;
@@ -75,6 +75,36 @@ describe("file store", () => {
     expect(deleteFileIfUnreferenced(db, t.dir, saved.sha256)).toBe(true);
     expect(fs.existsSync(target)).toBe(false);
     expect(deleteFileIfUnreferenced(db, t.dir, saved.sha256)).toBe(false);
+  });
+
+  describe("reservations", () => {
+    it("keeps an unreferenced file while its hash is reserved, and removes it after the release", () => {
+      const { db } = t.handle;
+      const saved = saveFile(t.dir, Buffer.from("in flight"), "md");
+      const target = path.join(t.dir, saved.storagePath);
+
+      const release = reserveHashes([saved.sha256]);
+      expect(deleteFileIfUnreferenced(db, t.dir, saved.sha256)).toBe(false);
+      expect(fs.existsSync(target)).toBe(true);
+
+      release();
+      expect(deleteFileIfUnreferenced(db, t.dir, saved.sha256)).toBe(true);
+      expect(fs.existsSync(target)).toBe(false);
+    });
+
+    it("counts overlapping reservations and ignores a repeated release", () => {
+      const { db } = t.handle;
+      const saved = saveFile(t.dir, Buffer.from("two uploads"), "md");
+      const first = reserveHashes([saved.sha256, saved.sha256]);
+      const second = reserveHashes([saved.sha256]);
+
+      first();
+      first();
+      expect(deleteFileIfUnreferenced(db, t.dir, saved.sha256)).toBe(false);
+
+      second();
+      expect(deleteFileIfUnreferenced(db, t.dir, saved.sha256)).toBe(true);
+    });
   });
 
   it("rejects a malformed hash", () => {

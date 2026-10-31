@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { eq } from "drizzle-orm";
 import { PDFDocument, StandardFonts } from "pdf-lib";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import Fastify from "fastify";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiErrorBody,
   ClassDetail,
@@ -13,7 +14,21 @@ import {
   MaterialSummary,
 } from "@studdy/shared";
 import { classTable, material } from "../db/schema.js";
+import { extractText } from "../extraction/index.js";
+import { saveFile } from "../files/store.js";
 import { createTestApp, type TestApp } from "../test/app.js";
+import { registerErrorHandler } from "./errors.js";
+import { materialRoutes } from "./materials.js";
+
+// Wrapped so single tests can slow extraction down or make saving fail; they call the real thing otherwise.
+vi.mock("../extraction/index.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../extraction/index.js")>();
+  return { ...actual, extractText: vi.fn(actual.extractText) };
+});
+vi.mock("../files/store.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../files/store.js")>();
+  return { ...actual, saveFile: vi.fn(actual.saveFile) };
+});
 
 interface UploadFile {
   name: string;
@@ -297,10 +312,10 @@ describe("materials API", () => {
       );
     });
 
-    it("rejects more than 20 files in one request", async () => {
+    it("rejects more than 10 files in one request", async () => {
       const course = await createCourse();
       const cls = await createClass(course.id);
-      const files = Array.from({ length: 21 }, (_, i) => ({
+      const files = Array.from({ length: 11 }, (_, i) => ({
         name: `n${i}.md`,
         content: `note ${i}`,
       }));
@@ -308,6 +323,101 @@ describe("materials API", () => {
       expect(res.statusCode).toBe(413);
       ApiErrorBody.parse(res.json());
       expect(t.handle.db.select().from(material).all()).toHaveLength(0);
+    });
+
+    it("rejects an upload whose files together exceed the request cap with 413", async () => {
+      const course = await createCourse();
+      const cls = await createClass(course.id);
+      const small = Fastify();
+      registerErrorHandler(small);
+      await small.register(materialRoutes, {
+        db: t.handle.db,
+        dataDir: t.dir,
+        maxUploadBytes: 100,
+      });
+      const send = async (files: UploadFile[]) =>
+        small.inject({
+          method: "POST",
+          url: `/api/classes/${cls.id}/materials`,
+          ...(await multipart(files)),
+        });
+
+      const tooBig = await send([
+        { name: "a.md", content: "a".repeat(60) },
+        { name: "b.md", content: "b".repeat(60) },
+      ]);
+      expectError(tooBig, 413, "validation");
+      expect(tooBig.json().error.message).toMatch(/in total/);
+      expect(t.handle.db.select().from(material).all()).toHaveLength(0);
+      expect(filesOnDisk()).toHaveLength(0);
+
+      const fits = await send([
+        { name: "a.md", content: "a".repeat(40) },
+        { name: "b.md", content: "b".repeat(40) },
+      ]);
+      expect(fits.statusCode).toBe(201);
+      await small.close();
+    });
+
+    it("keeps a shared file that another class deletes while this upload is extracting", async () => {
+      const course = await createCourse();
+      const one = await createClass(course.id, "One");
+      const two = await createClass(course.id, "Two");
+      const [inOne] = await uploadOk(one.id, [{ name: "a.md", content: "shared" }]);
+
+      vi.mocked(extractText).mockImplementationOnce(async (...args) => {
+        // The last committed reference goes away while the upload has saved but not inserted.
+        expect((await json("DELETE", `/api/materials/${inOne?.id}`)).statusCode).toBe(204);
+        expect(filesOnDisk()).toHaveLength(1);
+        return (
+          await vi.importActual<typeof import("../extraction/index.js")>("../extraction/index.js")
+        ).extractText(...args);
+      });
+      const [inTwo] = await uploadOk(two.id, [{ name: "a.md", content: "shared" }]);
+
+      expect(filesOnDisk()).toHaveLength(1);
+      const file = await json("GET", `/api/materials/${inTwo?.id}/file`);
+      expect(file.statusCode).toBe(200);
+      expect(file.body).toBe("shared");
+    });
+
+    it("removes only the files it saved when saving fails part-way through a batch", async () => {
+      const course = await createCourse();
+      const cls = await createClass(course.id);
+      const actual = await vi.importActual<typeof import("../files/store.js")>("../files/store.js");
+      vi.mocked(saveFile)
+        .mockImplementationOnce((...args) => actual.saveFile(...args))
+        .mockImplementationOnce(() => {
+          throw new Error("disk full");
+        });
+
+      const res = await upload(cls.id, [
+        { name: "one.md", content: "first" },
+        { name: "two.md", content: "second" },
+      ]);
+      expectError(res, 500, "internal");
+      expect(filesOnDisk()).toHaveLength(0);
+      expect(t.handle.db.select().from(material).all()).toHaveLength(0);
+    });
+
+    it("leaves a file it did not save alone when the batch fails", async () => {
+      const course = await createCourse();
+      const one = await createClass(course.id, "One");
+      const two = await createClass(course.id, "Two");
+      await uploadOk(one.id, [{ name: "a.md", content: "kept" }]);
+      const actual = await vi.importActual<typeof import("../files/store.js")>("../files/store.js");
+      vi.mocked(saveFile)
+        .mockImplementationOnce((...args) => actual.saveFile(...args))
+        .mockImplementationOnce(() => {
+          throw new Error("disk full");
+        });
+
+      const res = await upload(two.id, [
+        { name: "a.md", content: "kept" },
+        { name: "b.md", content: "other" },
+      ]);
+      expectError(res, 500, "internal");
+      expect(filesOnDisk()).toHaveLength(1);
     });
 
     it("rejects a duplicate in the same class with 409 and writes no rows", async () => {

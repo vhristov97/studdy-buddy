@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { cleanSlideText, pageMarker } from "./clean-slide-text.js";
+import { cleanSlideText, hasContent, pageMarker, type SlidePage } from "./clean-slide-text.js";
 
 const NBSP = String.fromCharCode(0xa0);
+
+/** A page of lines with positions (share of the page height from the top). */
+const page = (...lines: [text: string, position: number][]): SlidePage =>
+  lines.map(([text, position]) => ({ text, position }));
 
 describe("cleanSlideText", () => {
   it("puts a page marker before every page and separates pages with one blank line", () => {
@@ -28,9 +32,13 @@ describe("cleanSlideText", () => {
     expect(text).toBe("--- strana 1 ---\n## Naslov\n- a\n  - b\n    - c\ndugačak red");
   });
 
-  it("recognizes a repeated footer whatever its title or list prefix", () => {
-    const { text } = cleanSlideText(["## Podnožje\nprvo", "- podnožje\ndrugo"]);
-    expect(text).toBe("--- strana 1 ---\nprvo\n\n--- strana 2 ---\ndrugo");
+  it("never treats text without a known position as a repeated footer", () => {
+    const { text } = cleanSlideText([
+      "Slajd A\nPodnožje",
+      "Slajd B\nPodnožje",
+      "Slajd C\nPodnožje",
+    ]);
+    expect(text.match(/Podnožje/g)).toHaveLength(3);
   });
 
   it("collapses repeated and non-breaking spaces", () => {
@@ -82,20 +90,65 @@ describe("cleanSlideText", () => {
     expect(text).toBe("--- strana 1 ---\n- već stavka");
   });
 
-  it("drops lines repeated on more than half of the pages, comparing normalized text", () => {
+  it("drops a footer repeated on more than half of the pages from the bottom band, comparing normalized text", () => {
     const pages = [
-      "Slajd A\nASVSP – Kontejneri 12",
-      "Slajd B\nasvsp – kontejneri 13",
-      "Slajd C\nASVSP – Kontejneri 14",
-      "Slajd D",
+      page(["Slajd A", 0.3], ["ASVSP – Kontejneri 12", 0.95]),
+      page(["Slajd B", 0.3], ["asvsp – kontejneri 13", 0.95]),
+      page(["Slajd C", 0.3], ["ASVSP – Kontejneri 14", 0.9]),
+      page(["Slajd D", 0.3]),
     ];
     const { text } = cleanSlideText(pages);
     expect(text).not.toMatch(/kontejneri/i);
     for (const title of ["Slajd A", "Slajd B", "Slajd C", "Slajd D"]) expect(text).toContain(title);
   });
 
+  it("drops a repeated header from the top band", () => {
+    const { text } = cleanSlideText([
+      page(["Kurs", 0.05], ["a", 0.4]),
+      page(["Kurs", 0.05], ["b", 0.4]),
+    ]);
+    expect(text).toBe("--- strana 1 ---\na\n\n--- strana 2 ---\nb");
+  });
+
+  it("keeps a repeated line that sits in the body region", () => {
+    const { text } = cleanSlideText([
+      page(["Isti red", 0.5], ["a", 0.3]),
+      page(["Isti red", 0.5], ["b", 0.3]),
+      page(["Isti red", 0.5], ["c", 0.3]),
+    ]);
+    expect(text.match(/Isti red/g)).toHaveLength(3);
+  });
+
+  it("keeps a repeated line unless it is in the margin band on every page it occurs on", () => {
+    const { text } = cleanSlideText([page(["Red", 0.95]), page(["Red", 0.95]), page(["Red", 0.5])]);
+    expect(text.match(/Red/g)).toHaveLength(3);
+  });
+
+  it("keeps repeated titles and list items even in the margin band", () => {
+    const { text } = cleanSlideText([
+      page(["## Ponovljeni naslov", 0.05], ["- stavka", 0.95]),
+      page(["## Ponovljeni naslov", 0.05], ["- stavka", 0.95]),
+    ]);
+    expect(text.match(/## Ponovljeni naslov/g)).toHaveLength(2);
+    expect(text.match(/- stavka/g)).toHaveLength(2);
+  });
+
+  it("keeps a plain line when a title or bullet with the same text exists elsewhere", () => {
+    const { text } = cleanSlideText([
+      page(["Pojam", 0.95]),
+      page(["Pojam", 0.95]),
+      page(["## Pojam", 0.1 + 0.05]),
+    ]);
+    expect(text.match(/Pojam/g)).toHaveLength(3);
+  });
+
   it("keeps a line that appears on exactly half of the pages", () => {
-    const { text } = cleanSlideText(["Zajednički\na", "Zajednički\nb", "c", "d"]);
+    const { text } = cleanSlideText([
+      page(["Zajednički", 0.95]),
+      page(["Zajednički", 0.95]),
+      page(["c", 0.3]),
+      page(["d", 0.3]),
+    ]);
     expect(text.match(/Zajednički/g)).toHaveLength(2);
   });
 
@@ -108,6 +161,12 @@ describe("cleanSlideText", () => {
     const { text } = cleanSlideText(["Čokolada, ćuprija, šuma, žaba i đak\nĆEVAPI ŠĐŽČ"]);
     expect(text).toContain("Čokolada, ćuprija, šuma, žaba i đak");
     expect(text).toContain("ĆEVAPI ŠĐŽČ");
+  });
+
+  it("tells whether the cleaned text holds anything besides page markers", () => {
+    expect(hasContent(cleanSlideText(["", "12"]).text)).toBe(false);
+    expect(hasContent(cleanSlideText(["", "tekst"]).text)).toBe(true);
+    expect(hasContent("")).toBe(false);
   });
 
   it("handles an empty document", () => {

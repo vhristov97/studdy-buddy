@@ -1,4 +1,4 @@
-import { isNoiseLine } from "./clean-slide-text.js";
+import { isNoiseLine, type PositionedLine } from "./clean-slide-text.js";
 
 /** One text line of a slide, with the layout facts needed to recover its structure. */
 export interface SlideLine {
@@ -11,6 +11,8 @@ export interface SlideLine {
   /** Font height of the text. */
   height: number;
   isBullet: boolean;
+  /** Distance of the line's baseline from the page's top edge as a share of the page height. */
+  position?: number;
 }
 
 /** Lines at least this much taller than the page's median body line are titles. */
@@ -42,6 +44,7 @@ interface Block {
   x: number;
   textX: number;
   height: number;
+  position?: number;
 }
 
 /** Drops noise lines and joins a lone bullet glyph to the line after it. */
@@ -56,11 +59,32 @@ function toBlocks(lines: readonly SlideLine[]): Block[] {
     }
     if (text === "" || (!line.isBullet && isNoiseLine(text))) continue;
     if (line.isBullet) {
-      blocks.push({ kind: "bullet", text, x: line.x, textX: line.textX, height: line.height });
+      blocks.push({
+        kind: "bullet",
+        text,
+        x: line.x,
+        textX: line.textX,
+        height: line.height,
+        position: line.position,
+      });
     } else if (pending) {
-      blocks.push({ kind: "bullet", text, x: pending.x, textX: line.x, height: line.height });
+      blocks.push({
+        kind: "bullet",
+        text,
+        x: pending.x,
+        textX: line.x,
+        height: line.height,
+        position: line.position,
+      });
     } else {
-      blocks.push({ kind: "text", text, x: line.x, textX: line.x, height: line.height });
+      blocks.push({
+        kind: "text",
+        text,
+        x: line.x,
+        textX: line.x,
+        height: line.height,
+        position: line.position,
+      });
     }
     pending = undefined;
   }
@@ -77,6 +101,11 @@ function toBlocks(lines: readonly SlideLine[]): Block[] {
  * Page numbers, dates and empty lines are dropped.
  */
 export function structureSlideLines(lines: readonly SlideLine[]): string[] {
+  return structurePositionedLines(lines).map((line) => line.text);
+}
+
+/** Like `structureSlideLines`, but keeps where each line sits on the page (see `SlideLine.position`). */
+export function structurePositionedLines(lines: readonly SlideLine[]): PositionedLine[] {
   const blocks = toBlocks(lines);
   if (blocks.length === 0) return [];
 
@@ -96,24 +125,28 @@ export function structureSlideLines(lines: readonly SlideLine[]): string[] {
   const isTitle = (block: Block) =>
     block.kind === "text" && medianHeight > 0 && block.height >= medianHeight * TITLE_HEIGHT_RATIO;
 
-  const out: string[] = [];
+  const out: PositionedLine[] = [];
   /** The bullet that wrapped lines may still continue, and where its text starts. */
   let open: { index: number; textX: number; height: number } | undefined;
   for (const block of blocks) {
     if (block.kind === "bullet") {
-      out.push(`${"  ".repeat(levelOf(block.x))}- ${block.text}`);
+      out.push({
+        text: `${"  ".repeat(levelOf(block.x))}- ${block.text}`,
+        position: block.position,
+      });
       open = { index: out.length - 1, textX: block.textX, height: block.height };
     } else if (isTitle(block)) {
-      out.push(`## ${block.text}`);
+      out.push({ text: `## ${block.text}`, position: block.position });
       open = undefined;
     } else if (
       open &&
       Math.abs(block.x - open.textX) <= tolerance &&
       Math.abs(block.height - open.height) <= open.height * CONTINUATION_HEIGHT_TOLERANCE
     ) {
-      out[open.index] = `${out[open.index]} ${block.text}`;
+      const bullet = out[open.index];
+      if (bullet) bullet.text = `${bullet.text} ${block.text}`;
     } else {
-      out.push(block.text);
+      out.push({ text: block.text, position: block.position });
       open = undefined;
     }
   }

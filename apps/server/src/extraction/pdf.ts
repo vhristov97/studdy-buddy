@@ -1,6 +1,11 @@
 import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
-import { BULLET_PREFIX, cleanSlideText } from "./clean-slide-text.js";
-import { structureSlideLines, type SlideLine } from "./slide-structure.js";
+import {
+  BULLET_PREFIX,
+  cleanSlideText,
+  hasContent,
+  type PositionedLine,
+} from "./clean-slide-text.js";
+import { structurePositionedLines, type SlideLine } from "./slide-structure.js";
 import type { ExtractedText } from "./types.js";
 
 /** The parts of a pdf.js text item that line rebuilding needs. */
@@ -21,11 +26,15 @@ interface Run {
   offset: number;
   length: number;
   x: number;
+  y: number;
   width: number;
   height: number;
 }
 
-function finishLine(text: string, runs: Run[]): SlideLine | undefined {
+/** Maps a point of the page's text space to its distance from the top as a share of the height. */
+export type PositionOf = (x: number, y: number) => number;
+
+function finishLine(text: string, runs: Run[], positionOf?: PositionOf): SlideLine | undefined {
   if (text.trim() === "") return undefined;
   const bullet = BULLET_PREFIX.exec(text);
   const prefixLength = bullet?.[0].length ?? 0;
@@ -47,6 +56,7 @@ function finishLine(text: string, runs: Run[]): SlideLine | undefined {
     textX: bullet ? textX : first.x,
     height: Math.max(...(textRuns.length > 0 ? textRuns : runs).map((run) => run.height)),
     isBullet: bullet !== null,
+    ...(positionOf ? { position: positionOf(first.x, first.y) } : {}),
   };
 }
 
@@ -54,9 +64,10 @@ function finishLine(text: string, runs: Run[]): SlideLine | undefined {
  * Rebuilds the lines of one page from pdf.js text items. A new line starts after an item with
  * `hasEOL` or when the baseline (y of the transform) moves; items of one line are concatenated
  * (runs are often split mid-word at accented letters), with a space where there is a gap.
- * Each line carries its x position, font height and bullet marker for `structureSlideLines`.
+ * Each line carries its x position, font height and bullet marker for `structureSlideLines`,
+ * and its vertical position when `positionOf` is given.
  */
-export function itemsToLines(items: readonly PdfTextItem[]): SlideLine[] {
+export function itemsToLines(items: readonly PdfTextItem[], positionOf?: PositionOf): SlideLine[] {
   const lines: SlideLine[] = [];
   let current = "";
   let runs: Run[] = [];
@@ -65,7 +76,7 @@ export function itemsToLines(items: readonly PdfTextItem[]): SlideLine[] {
   let breakNext = false;
 
   const flush = () => {
-    const line = finishLine(current, runs);
+    const line = finishLine(current, runs, positionOf);
     if (line) lines.push(line);
     current = "";
     runs = [];
@@ -92,6 +103,7 @@ export function itemsToLines(items: readonly PdfTextItem[]): SlideLine[] {
         offset: current.length,
         length: item.str.length,
         x,
+        y,
         width: item.width,
         height: item.str.trim() === "" ? 0 : height,
       });
@@ -105,7 +117,7 @@ export function itemsToLines(items: readonly PdfTextItem[]): SlideLine[] {
   return lines;
 }
 
-/** Extracts the text of every page and cleans it with `cleanSlideText`. Throws on unreadable or text-less PDFs. */
+/** Extracts the text of every page and cleans it with `cleanSlideText`. Throws on unreadable PDFs and on ones that have no text left after cleaning. */
 export async function extractPdf(buffer: Buffer): Promise<ExtractedText> {
   const task = pdfjs.getDocument({
     // pdf.js transfers the buffer to its worker, so hand it a copy.
@@ -117,16 +129,19 @@ export async function extractPdf(buffer: Buffer): Promise<ExtractedText> {
   });
   try {
     const doc = await task.promise;
-    const pages: string[] = [];
+    const pages: PositionedLine[][] = [];
     for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber++) {
       const page = await doc.getPage(pageNumber);
       const content = await page.getTextContent();
       const items = content.items.filter((item) => "str" in item) as PdfTextItem[];
-      pages.push(structureSlideLines(itemsToLines(items)).join("\n"));
+      const viewport = page.getViewport({ scale: 1 });
+      const positionOf: PositionOf = (x, y) =>
+        viewport.convertToViewportPoint(x, y)[1] / viewport.height;
+      pages.push(structurePositionedLines(itemsToLines(items, positionOf)));
       page.cleanup();
     }
     const result = cleanSlideText(pages);
-    if (!pages.some((page) => page.trim() !== "")) {
+    if (!hasContent(result.text)) {
       throw new Error("The PDF has no extractable text (a scanned document?)");
     }
     return result;

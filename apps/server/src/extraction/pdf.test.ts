@@ -67,6 +67,33 @@ describe("extractPdf", () => {
     );
   });
 
+  it("keeps a repeated line in the body and a repeated title, but drops a bottom-band footer", async () => {
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    for (const body of ["prvi", "drugi", "treci"]) {
+      const page = doc.addPage([600, 800]);
+      page.drawText("Isti naslov", { x: 60, y: 740, size: 30, font });
+      page.drawText("Isti red u telu", { x: 60, y: 500, size: 16, font });
+      page.drawText(body, { x: 60, y: 450, size: 16, font });
+      page.drawText("Podnozje kursa", { x: 60, y: 30, size: 10, font });
+    }
+    const { text } = await extractPdf(Buffer.from(await doc.save()));
+    expect(text.match(/## Isti naslov/g)).toHaveLength(3);
+    expect(text.match(/Isti red u telu/g)).toHaveLength(3);
+    expect(text).not.toContain("Podnozje");
+  });
+
+  it("rejects a PDF whose text is all page numbers and dates as having no text", async () => {
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    for (const number of ["1", "2"]) {
+      const page = doc.addPage([600, 800]);
+      page.drawText(number, { x: 560, y: 30, size: 10, font });
+      page.drawText("21.10.2025.", { x: 60, y: 30, size: 10, font });
+    }
+    await expect(extractPdf(Buffer.from(await doc.save()))).rejects.toThrow(/no extractable text/i);
+  });
+
   it("rejects a PDF without any text", async () => {
     const doc = await PDFDocument.create();
     doc.addPage();
@@ -119,6 +146,15 @@ describe("itemsToLines", () => {
       item("tekst", 10, 100, 30, { hasEOL: true }),
     ]);
     expect(lines.map((line) => line.text)).toEqual(["tekst"]);
+  });
+
+  it("reports the line's vertical position when given a position function", () => {
+    const lines = itemsToLines(
+      [item("gore", 10, 780, 30, { hasEOL: true }), item("dole", 10, 40, 30)],
+      (_x, y) => 1 - y / 800,
+    );
+    expect(lines[0]?.position).toBeCloseTo(0.025);
+    expect(lines[1]?.position).toBeCloseTo(0.95);
   });
 
   it("reports x, text start, font height and the bullet marker", () => {
