@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { job } from "../test/utils";
-import { groupJobs, mergeJobs, stageLabel } from "./pipeline";
+import { groupJobs, jobLabel, mergeJobs, stageLabel } from "./pipeline";
 
 describe("mergeJobs", () => {
   it("lets the live copy win and sorts newest first", () => {
@@ -74,5 +74,32 @@ describe("stageLabel", () => {
     expect(stageLabel({ stage: "viz-builder", cycle: 1 })).toBe("Ispravke (krug 1)");
     expect(stageLabel({ stage: "viz-reviewer", cycle: 2 })).toBe("Provera (krug 2)");
     expect(stageLabel({ stage: "lesson-writer", cycle: null })).toBeNull();
+  });
+});
+
+describe("groupJobs viz", () => {
+  it("groups viz jobs per suggestion, in suggestion order after the other kinds", () => {
+    const groups = groupJobs([
+      job({ id: 9, kind: "viz", suggestionId: 2 }),
+      job({ id: 8, kind: "viz", suggestionId: 1 }),
+      job({ id: 7, kind: "viz", suggestionId: 2, status: "failed" }),
+      job({ id: 6, kind: "viz_topics" }),
+    ]);
+    expect(groups.map((g) => [g.kind, g.suggestionId, g.latest.id, g.earlier.length])).toEqual([
+      ["viz_topics", null, 6, 0],
+      ["viz", 1, 8, 0],
+      ["viz", 2, 9, 1],
+    ]);
+  });
+});
+
+describe("jobLabel", () => {
+  it("names the topic of a viz job when known", () => {
+    const concepts = new Map([[1, "Sharding"]]);
+    expect(jobLabel(job({ kind: "viz", suggestionId: 1 }), concepts)).toBe(
+      "Vizualizacija: Sharding",
+    );
+    expect(jobLabel(job({ kind: "viz", suggestionId: 2 }), concepts)).toBe("Vizualizacija");
+    expect(jobLabel(job({ kind: "viz_topics" }), concepts)).toBe("Predlozi vizualizacija");
   });
 });

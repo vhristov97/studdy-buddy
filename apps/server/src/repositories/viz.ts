@@ -1,7 +1,12 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
-import type { VisualizationSummary, VizSuggestion } from "@studdy/shared";
+import type {
+  CourseVisualization,
+  VisualizationDetail,
+  VisualizationSummary,
+  VizSuggestion,
+} from "@studdy/shared";
 import type { Db } from "../db/client.js";
-import { classTable, visualization, vizSuggestion } from "../db/schema.js";
+import { classTable, course, visualization, vizSuggestion } from "../db/schema.js";
 import { ApiError } from "../routes/errors.js";
 import { ConflictError } from "./conflict.js";
 
@@ -114,4 +119,60 @@ export function listVisualizations(db: Db, classId: number): VisualizationSummar
     .orderBy(asc(visualization.id))
     .all()
     .map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }));
+}
+
+/** The released visualizations of a course, by class number and then oldest first. */
+export function listCourseVisualizations(db: Db, courseId: number): CourseVisualization[] {
+  return db
+    .select({
+      id: visualization.id,
+      classId: visualization.classId,
+      suggestionId: visualization.suggestionId,
+      slug: visualization.slug,
+      title: visualization.title,
+      createdAt: visualization.createdAt,
+      classNumber: classTable.number,
+      className: classTable.title,
+    })
+    .from(visualization)
+    .innerJoin(classTable, eq(classTable.id, visualization.classId))
+    .where(eq(classTable.courseId, courseId))
+    .orderBy(asc(classTable.number), asc(visualization.id))
+    .all()
+    .map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }));
+}
+
+/** One visualization with its class, course and topic; no HTML. */
+export function getVisualizationDetail(db: Db, id: number): VisualizationDetail | undefined {
+  const row = db
+    .select({
+      id: visualization.id,
+      classId: visualization.classId,
+      suggestionId: visualization.suggestionId,
+      slug: visualization.slug,
+      title: visualization.title,
+      createdAt: visualization.createdAt,
+      classNumber: classTable.number,
+      className: classTable.title,
+      courseId: course.id,
+      courseName: course.name,
+      concept: vizSuggestion.concept,
+      misconception: vizSuggestion.misconception,
+    })
+    .from(visualization)
+    .innerJoin(classTable, eq(classTable.id, visualization.classId))
+    .innerJoin(course, eq(course.id, classTable.courseId))
+    .leftJoin(vizSuggestion, eq(vizSuggestion.id, visualization.suggestionId))
+    .where(eq(visualization.id, id))
+    .get();
+  return row && { ...row, createdAt: row.createdAt.toISOString() };
+}
+
+/** The stored page of a visualization. */
+export function getVisualizationHtml(db: Db, id: number): string | undefined {
+  return db
+    .select({ html: visualization.html })
+    .from(visualization)
+    .where(eq(visualization.id, id))
+    .get()?.html;
 }

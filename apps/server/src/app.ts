@@ -66,6 +66,11 @@ export function buildApp({
         .code(404)
         .send(errorBody("not_found", `Route ${request.method}:${request.url} not found`));
     }
+    // A visualization that does not exist is a plain 404, never the app shell (the iframe and
+    // "open in a new window" would show a nested app).
+    if (pathname === "/viz" || pathname.startsWith("/viz/")) {
+      return reply.code(404).send(errorBody("not_found", "Visualization not found"));
+    }
     // Only navigation requests (no file extension in the last segment) get the SPA shell;
     // missing assets such as /assets/index-oldhash.js must stay 404s.
     const isNavigation = !path.extname(pathname);
