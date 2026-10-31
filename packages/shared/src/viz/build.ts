@@ -47,14 +47,124 @@ const STORAGE_TRY_WINDOW = 200;
 
 const EXTERNAL_URL = String.raw`(?:https?:)?\/\/`;
 
-/** The raw value of attribute `name` in one start tag; null when the tag does not have it. */
-function tagAttr(tag: string, name: string): string | null {
-  const match = new RegExp(
-    String.raw`[\s"'/]${name}\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]*))`,
-    "i",
-  ).exec(tag);
-  return match ? (match[1] ?? match[2] ?? match[3] ?? "") : null;
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: "&",
+  quot: '"',
+  apos: "'",
+  lt: "<",
+  gt: ">",
+  colon: ":",
+  sol: "/",
+  tab: "\t",
+  newline: "\n",
+};
+
+/** Decodes the common character references in an attribute value (a single pass, like a browser). */
+function decodeEntities(value: string): string {
+  return value.replace(/&(?:#x([0-9a-f]+)|#(\d+)|([a-z]+));?/gi, (whole, hex, dec, named) => {
+    if (hex !== undefined || dec !== undefined) {
+      const code = hex !== undefined ? parseInt(hex, 16) : parseInt(dec, 10);
+      return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : "�";
+    }
+    // Named references only decode with their semicolon here (conservative for unknown names).
+    return whole.endsWith(";") ? (NAMED_ENTITIES[named.toLowerCase()] ?? whole) : whole;
+  });
 }
+
+interface StartTag {
+  /** Lowercased tag name. */
+  name: string;
+  /** Lowercased attribute name -> entity-decoded value; the first occurrence of a name wins. */
+  attrs: Map<string, string>;
+}
+
+const isSpace = (c: string | undefined): boolean =>
+  c === " " || c === "\t" || c === "\n" || c === "\r" || c === "\f";
+
+/**
+ * The start tags of an HTML document, tokenized the way a browser does it: comments, doctype,
+ * end tags and the contents of <script>/<style> are skipped; attribute values may be double-quoted,
+ * single-quoted or unquoted; the first duplicate attribute wins. Not a full parser, but it never
+ * reads one attribute's text as another attribute.
+ */
+function startTags(html: string): StartTag[] {
+  const tags: StartTag[] = [];
+  const lower = html.toLowerCase();
+  const n = html.length;
+  let i = 0;
+  while (i < n) {
+    const lt = html.indexOf("<", i);
+    if (lt === -1) break;
+    i = lt + 1;
+    const next = html[i];
+    if (html.startsWith("!--", i)) {
+      const end = html.indexOf("-->", i + 3);
+      i = end === -1 ? n : end + 3;
+      continue;
+    }
+    if (next === "!" || next === "?" || next === "/") {
+      const end = html.indexOf(">", i);
+      i = end === -1 ? n : end + 1;
+      continue;
+    }
+    if (next === undefined || !/[a-z]/i.test(next)) continue;
+
+    let nameEnd = i;
+    while (nameEnd < n && !isSpace(html[nameEnd]) && html[nameEnd] !== "/" && html[nameEnd] !== ">")
+      nameEnd++;
+    const name = lower.slice(i, nameEnd);
+    const attrs = new Map<string, string>();
+    i = nameEnd;
+    for (;;) {
+      while (i < n && (isSpace(html[i]) || html[i] === "/")) i++;
+      if (i >= n) break;
+      if (html[i] === ">") {
+        i++;
+        break;
+      }
+      // Attribute name: at least one char (a leading "=" belongs to the name), then up to
+      // whitespace, "/", ">" or "=".
+      let attrEnd = i + 1;
+      while (
+        attrEnd < n &&
+        !isSpace(html[attrEnd]) &&
+        html[attrEnd] !== "/" &&
+        html[attrEnd] !== ">" &&
+        html[attrEnd] !== "="
+      )
+        attrEnd++;
+      const attrName = lower.slice(i, attrEnd);
+      i = attrEnd;
+      while (i < n && isSpace(html[i])) i++;
+      let value = "";
+      if (html[i] === "=") {
+        i++;
+        while (i < n && isSpace(html[i])) i++;
+        const quote = html[i];
+        if (quote === '"' || quote === "'") {
+          const end = html.indexOf(quote, i + 1);
+          value = html.slice(i + 1, end === -1 ? n : end);
+          i = end === -1 ? n : end + 1;
+        } else {
+          let end = i;
+          while (end < n && !isSpace(html[end]) && html[end] !== ">") end++;
+          value = html.slice(i, end);
+          i = end;
+        }
+      }
+      if (!attrs.has(attrName)) attrs.set(attrName, decodeEntities(value));
+    }
+    tags.push({ name, attrs });
+    if (name === "script" || name === "style") {
+      const end = lower.indexOf(`</${name}`, i);
+      i = end === -1 ? n : end;
+    }
+  }
+  return tags;
+}
+
+/** A URL attribute value as a browser sees it: ASCII tab/newline removed, surrounding space trimmed. */
+const urlValue = (value: string): string => value.replace(/[\t\n\r]/g, "").trim();
 
 /** Words of a `<title>` / plan title, split on whitespace. */
 export function countTitleWords(title: string): number {
@@ -96,7 +206,11 @@ export function validateVizHtml(html: string): VizReport {
   // Everything below ignores HTML comments, so a commented-out tag is neither found nor flagged.
   const page = html.replace(/<!--[\s\S]*?-->/g, "");
 
-  if (!/<meta\b[^>]*\bname\s*=\s*["']?viewport\b/i.test(page)) {
+  const tags = startTags(html);
+
+  if (
+    !tags.some((t) => t.name === "meta" && t.attrs.get("name")?.trim().toLowerCase() === "viewport")
+  ) {
     error(
       "missing_viewport",
       'Add <meta name="viewport" content="width=device-width, initial-scale=1">.',
@@ -125,16 +239,20 @@ export function validateVizHtml(html: string): VizReport {
     );
   }
 
-  if (/<script\b[^>]*\bsrc\s*=/i.test(page)) {
+  if (tags.some((t) => t.name === "script" && t.attrs.has("src"))) {
     error("external_script", "<script src=...> is not allowed; put all JavaScript inline.");
   }
-  if (new RegExp(String.raw`<link\b[^>]*\bhref\s*=\s*["']?\s*${EXTERNAL_URL}`, "i").test(page)) {
+  const externalUrl = new RegExp(String.raw`^${EXTERNAL_URL}`, "i");
+  const links = tags.filter((t) => t.name === "link");
+  if (links.some((t) => externalUrl.test(urlValue(t.attrs.get("href") ?? "")))) {
     error(
       "external_link",
       "<link href=http(s)://...> is not allowed; the page must not load external resources.",
     );
   }
-  if (/<link\b[^>]*\brel\s*=\s*["']?stylesheet\b/i.test(page)) {
+  if (
+    links.some((t) => (t.attrs.get("rel") ?? "").toLowerCase().split(/\s+/).includes("stylesheet"))
+  ) {
     error(
       "external_stylesheet",
       '<link rel="stylesheet"> is not allowed; put all CSS in a <style> element.',
@@ -162,18 +280,29 @@ export function validateVizHtml(html: string): VizReport {
     );
   }
 
-  // http(s):// or // in src/href/poster/action of any tag. Anchors are handled separately below.
-  const attrPattern = new RegExp(
-    String.raw`\s(src|href|xlink:href|poster|action|srcset)\s*=\s*["']?\s*${EXTERNAL_URL}`,
-    "i",
-  );
-  for (const tag of page.matchAll(/<([a-z][a-z0-9-]*)\b[^>]*>/gi)) {
-    const name = tag[1]!.toLowerCase();
-    if (name === "script" || name === "link" || name === "a" || name === "area") continue; // handled elsewhere
-    if (attrPattern.test(tag[0])) {
+  // http(s):// or // in src/href/poster/action/... of any tag. Anchors are handled separately below.
+  const resourceAttrs = [
+    "src",
+    "href",
+    "xlink:href",
+    "poster",
+    "action",
+    "formaction",
+    "background",
+  ];
+  for (const tag of tags) {
+    if (tag.name === "script" || tag.name === "link" || tag.name === "a" || tag.name === "area") {
+      continue; // handled elsewhere
+    }
+    const values = resourceAttrs.map((a) => tag.attrs.get(a));
+    if (tag.name === "object") values.push(tag.attrs.get("data"));
+    // srcset is a comma-separated list of "url descriptor" candidates.
+    values.push(...(tag.attrs.get("srcset") ?? "").split(","));
+    const bad = values.find((v) => v !== undefined && externalUrl.test(urlValue(v)));
+    if (bad !== undefined) {
       error(
         "external_resource",
-        `<${name}> references an external URL (${tag[0].slice(0, 80)}...); the page must not load external resources.`,
+        `<${tag.name}> references an external URL (${urlValue(bad).slice(0, 60)}...); the page must not load external resources.`,
       );
       break;
     }
@@ -184,20 +313,22 @@ export function validateVizHtml(html: string): VizReport {
   // would navigate the sandboxed frame away from the page. CSP has no reliable directive against
   // frame self-navigation, so this check is the main guard (the serving headers and the iframe
   // sandbox are defense in depth).
-  for (const tag of page.matchAll(/<(a|area)\b[^>]*>/gi)) {
-    const href = tagAttr(tag[0], "href");
-    if (href === null) continue;
+  for (const tag of tags) {
+    if (tag.name !== "a" && tag.name !== "area") continue;
+    const href = tag.attrs.get("href");
+    if (href === undefined) continue;
     const value = href.trim();
     if (value === "" || value.startsWith("#")) continue;
     error(
       "external_link_anchor",
-      `<${tag[1]!.toLowerCase()}> links away from the page (${tag[0].slice(0, 80)}...); only href="#id" links inside the page are allowed, cite sources as plain text.`,
+      `<${tag.name} href="${value.slice(0, 60)}"> links away from the page; only href="#id" links inside the page are allowed, cite sources as plain text.`,
     );
   }
-  for (const tag of page.matchAll(/<(?:form|button|input)\b[^>]*>/gi)) {
+  for (const tag of tags) {
+    if (tag.name !== "form" && tag.name !== "button" && tag.name !== "input") continue;
     for (const attr of ["action", "formaction"]) {
-      const value = tagAttr(tag[0], attr);
-      if (value !== null && value.trim() !== "") {
+      const value = tag.attrs.get(attr);
+      if (value !== undefined && value.trim() !== "") {
         error(
           "navigation_api",
           `${attr}="${value.trim().slice(0, 40)}" is not allowed; forms must not submit or navigate.`,
@@ -205,7 +336,7 @@ export function validateVizHtml(html: string): VizReport {
       }
     }
   }
-  if (/<base\b[^>]*\bhref\s*=/i.test(page)) {
+  if (tags.some((t) => t.name === "base" && t.attrs.has("href"))) {
     error(
       "navigation_api",
       "<base href> is not allowed; the page must not change how links resolve.",
@@ -225,16 +356,15 @@ export function validateVizHtml(html: string): VizReport {
       "Assigning location / location.href or calling location.assign() / location.replace() is not allowed; the page must not navigate.",
     );
   }
-  if (
-    /(?<![.\w$])(?:(?:window|self|top|parent|globalThis)\s*\.\s*)+open\s*\(/.test(page) ||
-    /(?<![.\w$])(?<!\bfunction\s+)open\s*\((?![^()]*\)\s*\{)/.test(page)
-  ) {
-    error(
-      "navigation_api",
-      "window.open() is not allowed; the page must not navigate or open windows.",
-    );
+  // The iframe sandbox has no allow-popups, so window.open cannot open anything; only mention it.
+  if (/(?<![.\w$])(?:(?:window|self|top|parent|globalThis)\s*\.\s*)+open\s*\(/.test(page)) {
+    warn("navigation_api", "window.open() cannot open anything in the sandboxed frame; remove it.");
   }
-  if (/<meta\b[^>]*\bhttp-equiv\s*=\s*["']?\s*refresh\b/i.test(page)) {
+  if (
+    tags.some(
+      (t) => t.name === "meta" && t.attrs.get("http-equiv")?.trim().toLowerCase() === "refresh",
+    )
+  ) {
     error(
       "navigation_api",
       '<meta http-equiv="refresh"> is not allowed; the page must not navigate.',

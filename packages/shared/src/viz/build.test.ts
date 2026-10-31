@@ -201,6 +201,7 @@ describe("validateVizHtml", () => {
       "class Door { open(d) { return d; } }",
       "function open(door) { return door; }",
       "door.open(1)",
+      "function open(){}; open()",
     ]) {
       const html = VALID_HTML.replace("let saved = null;", `${code}; let saved = null;`);
       expect(errorsOf(html), code).toEqual([]);
@@ -209,7 +210,6 @@ describe("validateVizHtml", () => {
 
   it("rejects navigation APIs and meta refresh", () => {
     for (const code of [
-      'window.open("https://x.test")',
       'location.href = "https://x.test"',
       'window.location.href="https://x.test"',
       'location = "https://x.test"',
@@ -220,8 +220,6 @@ describe("validateVizHtml", () => {
       'document.location.replace("x")',
       'window.top.location.href = "x"',
       'location.assign("x")',
-      'open("https://x.test")',
-      'self.open("x")',
     ]) {
       const html = VALID_HTML.replace("let saved = null;", `${code}; let saved = null;`);
       expect(errorsOf(html), code).toContain("navigation_api");
@@ -237,6 +235,25 @@ describe("validateVizHtml", () => {
       'const here = window.location.href; if (location.hash == "#a") {} let saved = null;',
     );
     expect(errorsOf(ok)).toEqual([]);
+  });
+
+  it("only warns about window.open and friends", () => {
+    for (const code of [
+      'window.open("https://x.test")',
+      'self.open("x")',
+      'top.open("x")',
+      'parent.open("x")',
+      'globalThis.open("x")',
+    ]) {
+      const html = VALID_HTML.replace("let saved = null;", `${code}; let saved = null;`);
+      expect(errorsOf(html), code).toEqual([]);
+      expect(warningsOf(html), code).toContain("navigation_api");
+    }
+    const bare = VALID_HTML.replace(
+      "let saved = null;",
+      "function open(){}; open(); let saved = null;",
+    );
+    expect(validateVizHtml(bare)).toEqual({ errors: [], warnings: [] });
   });
 
   it("ignores forbidden tags inside HTML comments", () => {
@@ -294,6 +311,96 @@ describe("validateVizHtml", () => {
         "missing_color_scheme",
       ]),
     );
+  });
+});
+
+describe("validateVizHtml tag tokenizer", () => {
+  const withTag = (tag: string): string => VALID_HTML.replace("<button", `${tag}<button`);
+
+  it("does not read a quoted value as an attribute", () => {
+    for (const tag of [
+      `<a title="href='#safe'" href="https://evil.test">x</a>`,
+      `<a title='href="#safe"' href=https://evil.test>x</a>`,
+      `<a data-x="a>b" href="https://evil.test">x</a>`,
+      `<a title="x = y" href = 'javascript:alert(1)'>x</a>`,
+    ]) {
+      expect(errorsOf(withTag(tag)), tag).toContain("external_link_anchor");
+    }
+    // the same text as a title is harmless when the real href is a fragment
+    expect(errorsOf(withTag(`<a title="href='https://x.test'" href="#a">x</a>`))).toEqual([]);
+    expect(errorsOf(withTag(`<a title="a > b" href="#a">x</a>`))).toEqual([]);
+  });
+
+  it("reads double-quoted, single-quoted and unquoted values", () => {
+    for (const tag of [
+      `<a href="//x.test">x</a>`,
+      `<a href='//x.test'>x</a>`,
+      `<a href=//x.test>x</a>`,
+    ]) {
+      expect(errorsOf(withTag(tag)), tag).toContain("external_link_anchor");
+    }
+    for (const tag of [
+      `<a href="#a">x</a>`,
+      `<a href='#a'>x</a>`,
+      `<a href=#a>x</a>`,
+      `<a href=#a/>x</a>`,
+    ]) {
+      expect(errorsOf(withTag(tag)), tag).toEqual([]);
+    }
+  });
+
+  it("lets the first duplicate attribute win, like a browser", () => {
+    expect(errorsOf(withTag(`<a href="#a" href="https://x.test">x</a>`))).toEqual([]);
+    expect(errorsOf(withTag(`<a href="https://x.test" href="#a">x</a>`))).toContain(
+      "external_link_anchor",
+    );
+  });
+
+  it("decodes character references in values", () => {
+    for (const tag of [
+      `<a href="&#x6a;avascript:alert(1)">x</a>`,
+      `<a href="&#106avascript:alert(1)">x</a>`,
+      `<a href="&#104;ttps://x.test">x</a>`,
+      `<a href="java&Tab;script:1">x</a>`,
+      `<a href="https&colon;//x.test">x</a>`,
+    ]) {
+      expect(errorsOf(withTag(tag)), tag).toContain("external_link_anchor");
+    }
+    expect(errorsOf(withTag(`<img src="&#x68;ttps://x.test/a.png">`))).toContain(
+      "external_resource",
+    );
+    expect(errorsOf(withTag(`<img srcset="a.png 1x, &#104;ttps://x.test/b.png 2x">`))).toContain(
+      "external_resource",
+    );
+    expect(errorsOf(withTag(`<a href="&#35;a">x</a>`))).toEqual([]);
+  });
+
+  it("treats tag and attribute names case-insensitively", () => {
+    expect(errorsOf(withTag(`<A HREF="https://x.test">x</A>`))).toContain("external_link_anchor");
+    expect(errorsOf(withTag(`<IMG SRC="https://x.test/a.png">`))).toContain("external_resource");
+    expect(errorsOf(withTag(`<SCRIPT SRC="a.js"></SCRIPT>`))).toContain("external_script");
+    expect(errorsOf(withTag(`<BASE HREF="/">`))).toContain("navigation_api");
+    expect(errorsOf(withTag(`<META HTTP-EQUIV="Refresh" CONTENT="0">`))).toContain(
+      "navigation_api",
+    );
+    expect(errorsOf(withTag(`<LINK REL="Stylesheet" HREF="a.css">`))).toContain(
+      "external_stylesheet",
+    );
+  });
+
+  it("ignores tag-like text inside script and style contents and comments", () => {
+    const inScript = VALID_HTML.replace(
+      "let saved = null;",
+      `const html = '<a href="https://x.test">x</a><img src="https://x.test/a.png">'; if (1<2) {} let saved = null;`,
+    );
+    expect(errorsOf(inScript)).toEqual([]);
+    const inStyle = VALID_HTML.replace("body {", `/* <a href="https://x.test"> */ body {`);
+    expect(errorsOf(inStyle)).toEqual([]);
+    expect(errorsOf(withTag(`<!-- <a href="https://x.test">x</a> -->`))).toEqual([]);
+    // a real tag after the script is still seen
+    expect(
+      errorsOf(VALID_HTML.replace("</body>", `<a href="https://x.test">x</a></body>`)),
+    ).toContain("external_link_anchor");
   });
 });
 
