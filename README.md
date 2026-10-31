@@ -13,8 +13,10 @@ Proof of concept, in progress.
 | M0 Scaffold, M1 agent infrastructure | done |
 | M2 Courses, classes, material uploads and viewer | done |
 | M3 Combined notes: Generate button, lesson writer, lesson view with tracking table | done |
-| M4 Quiz branch (planner, builder, review loop) | next |
-| M5 Quiz player · M6 Grading and progress · M7 Visualizations · M8 Cumulative reviews · M9 Import/export | planned |
+| M4 Quiz branch (planner, builder, review loop) | done |
+| M5 Quiz player and submissions | done |
+| M6 Grading and progress | next |
+| M7 Visualizations · M8 Cumulative reviews · M9 Import/export | planned |
 
 What works today:
 
@@ -25,6 +27,17 @@ What works today:
   - flags mistakes in the notes with `⚠️ Ispravka` callouts;
   - asks you about struck-through items;
   - lists the testable topics in a knowledge-tracking table (`Tema | Ocena | Testirano | Napomene`).
+- After the lesson, a quiz (`P01`, …) is generated automatically:
+  - a planner (Opus) decides the scope and the answers and targets the mistakes in your notes;
+  - a builder (Sonnet) writes the questions;
+  - the planner reviews them, with up to 3 fix rounds;
+  - a failed quiz can be regenerated from scratch.
+- Take a quiz in the browser:
+  - question types: multiple choice, numeric, matching and open;
+  - „Ne znam" on every question;
+  - your draft autosaves;
+  - after you submit you get instant feedback with the correct answers and explanations, plus a score;
+  - open answers wait for grading, and past submissions stay viewable.
 
 ## Stack
 
@@ -60,6 +73,7 @@ npm test               # all Vitest projects; agents are tested with a fake mode
 npm run db:generate    # new migration from apps/server/src/db/schema.ts
 npm run extract -- <file>               # print the text extracted from a PDF/HTML/Markdown file
 npm run lesson:try -- --class <id>      # run the lesson writer on a class (real API, writes to data/tmp/)
+npm run quiz:try -- --class <id>        # plan, build and review a quiz once (real API, writes to data/tmp/)
 npm run smoke:agent    # tiny real-API check of the agent stack
 ```
 
