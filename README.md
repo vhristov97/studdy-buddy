@@ -99,3 +99,7 @@ npm run smoke:agent    # tiny real-API check of the agent stack
 - Mozaik's bundled cloud SDK uploads all agent events, including full agent memory (your study materials), to app.jigjoy.ai if `MOZAIK_API_KEY` or `MOZAIK_PROJECT_KEY` is set (environment or `.env`) or the machine is paired (`~/.mozaik/credentials.json`).
 - The server refuses to start with those keys present unless you opt in with `MOZAIK_CLOUD_ENABLED=true`. Without the opt-in it also ignores a paired machine's credentials.
 - Tests force telemetry off, so they never upload anything.
+
+## License
+
+[MIT](LICENSE)

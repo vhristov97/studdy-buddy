@@ -2,6 +2,7 @@
   "name": "@studdy/server",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "dependencies": {
     "@fastify/multipart": "10.1.6",

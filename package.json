@@ -1,6 +1,7 @@
 {
   "name": "studdy-buddy",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "workspaces": [
     "apps/*",
