@@ -61,6 +61,26 @@ const bad: [string, () => QuizPlan, string][] = [
     'topic "Skladišta podataka" is not an earlier topic of predavanje 3. Valid (topic, class) pairs: ("Skladišta podataka", predavanje 1)',
   ],
   [
+    "a repeat whose ref names another class than classNumber",
+    () => mutated((p) => void (p.questions[5]!.ref = "Predavanje 3 › Skladišta podataka")),
+    'q6: a repeat\'s ref must start with "Predavanje 1 ›"',
+  ],
+  [
+    "a repeat whose ref has no class prefix",
+    () => mutated((p) => void (p.questions[5]!.ref = "Skladišta podataka")),
+    'a repeat\'s ref must start with "Predavanje 1 ›"',
+  ],
+  [
+    "a repeat whose ref names class 10 for classNumber 1",
+    () => mutated((p) => void (p.questions[5]!.ref = "Predavanje 10 › Skladišta")),
+    'a repeat\'s ref must start with "Predavanje 1 ›"',
+  ],
+  [
+    "a non-repeat with a Predavanje ref",
+    () => mutated((p) => void (p.questions[1]!.ref = "Predavanje 1 › Stream obrada")),
+    'q2: ref "Predavanje 1 › Stream obrada" starts with "Predavanje <N> ›"',
+  ],
+  [
     "classNumber on a non-repeat",
     () => mutated((p) => void (p.questions[1]!.classNumber = 1)),
     "classNumber must be null when isRepeat is false",
@@ -219,6 +239,18 @@ describe("buildQuizPlannerMessage", () => {
     );
   });
 
+  it("marks deferred backlog items as not to be tested", () => {
+    const message = buildQuizPlannerMessage(
+      ctxFixture({
+        backlog: [
+          { topic: "Odložena", classNumber: 1, dueQuiz: "K1", reason: "left_out", deferred: true },
+        ],
+      }),
+    );
+    expect(message).toContain("(odloženo — ne testirati dok se ne obradi)");
+    expect(message).not.toContain("obavezno u K1");
+  });
+
   it("lists backlog and observations when present, and says so when earlier topics are empty", () => {
     const ctx = ctxFixture({
       earlierTopics: [],
@@ -275,6 +307,24 @@ describe("quizPlanSchema", () => {
     expect(issuesOf(plan)).toBe("");
   });
 
+  it("accepts a repeat ref with or without a leading zero on the class number", () => {
+    for (const ref of ["Predavanje 1 › Skladišta", "Predavanje 01 › Skladišta"]) {
+      expect(issuesOf(mutated((p) => void (p.questions[5]!.ref = ref)))).toBe("");
+    }
+  });
+
+  it("rejects a repeat of a deferred backlog item and says why", () => {
+    const ctx = ctxFixture({
+      backlog: [
+        { topic: "Odložena", classNumber: 1, dueQuiz: "K1", reason: "left_out", deferred: true },
+      ],
+    });
+    const plan = mutated((p) => {
+      p.questions[5]!.topic = "Odložena";
+    });
+    expect(issuesOf(plan, ctx)).toContain('topic "Odložena" is a deferred backlog item');
+  });
+
   it("does not require misconception coverage for a deferred topic", () => {
     const ctx = ctxFixture();
     ctx.topics[2]!.history = [
@@ -304,6 +354,7 @@ describe("quizPlanSchema", () => {
       const plan = (n: number) =>
         mutated((p) => {
           p.questions[5]!.classNumber = n;
+          p.questions[5]!.ref = `Predavanje ${n} › Skladišta podataka`;
         });
       expect(issuesOf(plan(1), ctx)).toBe("");
       expect(issuesOf(plan(3), ctx)).toBe("");

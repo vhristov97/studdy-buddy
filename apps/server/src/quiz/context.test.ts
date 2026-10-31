@@ -25,6 +25,7 @@ let class3: number;
 let limitClass: number;
 let backlogClass3: number;
 let backlogClass5: number;
+let deferredBacklogClass: number;
 
 function addClass(courseId: number, number: number, withLesson: boolean): number {
   const { db } = handle;
@@ -150,6 +151,18 @@ beforeAll(() => {
   };
   backlogClass3 = withBacklog("Kurs 3", [], 3);
   backlogClass5 = withBacklog("Kurs 4", [2, 3, 4], 5);
+
+  // A deferred topic that grading backlogged (left_out) is not a repeat candidate.
+  const dc = db.insert(course).values({ name: "Kurs 5" }).returning().get();
+  const dFirst = addClass(dc.id, 1, true);
+  const dTopic = addTopic(dc.id, dFirst, 0, "Odložena u backlogu", "?", {
+    deferred: true,
+    deferredNote: "Na sledećem času.",
+  });
+  db.insert(backlogItem)
+    .values({ courseId: dc.id, topicId: dTopic, dueQuiz: "K1", reason: "left_out" })
+    .run();
+  deferredBacklogClass = addClass(dc.id, 2, true);
 });
 
 afterAll(() => {
@@ -204,8 +217,8 @@ describe("loadQuizContext", () => {
       .run();
     const ctx = loadQuizContext(db, class2);
     expect(ctx.backlog).toEqual([
-      { topic: "Slaba tema", classNumber: 1, dueQuiz: "K1", reason: "weak" },
-      { topic: "Druga tema", classNumber: 2, dueQuiz: "K2", reason: "gap" },
+      { topic: "Slaba tema", classNumber: 1, dueQuiz: "K1", reason: "weak", deferred: false },
+      { topic: "Druga tema", classNumber: 2, dueQuiz: "K2", reason: "gap", deferred: false },
     ]);
     expect(ctx.observations).toEqual(["Prva", "Druga"]);
     db.delete(backlogItem).where(eq(backlogItem.courseId, c.id)).run();
@@ -272,6 +285,27 @@ describe("loadQuizContext", () => {
     plan.questions[5]!.classNumber = 1;
     const result = quizPlanSchema(plannerCtx).safeParse(plan);
     expect(result.success).toBe(true);
+  });
+
+  it("never offers a deferred backlog topic as a repeat candidate and pulls no lesson for it", () => {
+    const ctx = loadQuizContext(handle.db, deferredBacklogClass);
+    expect(ctx.earlierTopics).toEqual([]);
+    expect(ctx.earlierLessons).toEqual([]);
+    // It stays on the backlog list, marked deferred.
+    expect(ctx.backlog).toEqual([
+      expect.objectContaining({ topic: "Odložena u backlogu", classNumber: 1, deferred: true }),
+    ]);
+    // A plan repeating it is rejected, with the reason.
+    const plan = planFixture();
+    plan.questions[5]!.topic = "Odložena u backlogu";
+    plan.questions[5]!.classNumber = 1;
+    const result = quizPlanSchema(ctxFixture({ ...ctx, topics: ctxFixture().topics })).safeParse(
+      plan,
+    );
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((i) => i.message).join("\n")).toContain(
+      "deferred backlog item",
+    );
   });
 
   it("keeps backlog classes when trimming to the lesson limit; weak classes fill the rest", () => {

@@ -1,7 +1,7 @@
-import { and, asc, eq, lt } from "drizzle-orm";
+import { and, asc, eq, isNull, lt } from "drizzle-orm";
 import { lessonQuizCode, type LessonView, type TopicRating } from "@studdy/shared";
 import type { Db } from "../db/client.js";
-import { classTable, course } from "../db/schema.js";
+import { backlogItem, classTable, course, topic as topicTable } from "../db/schema.js";
 import { loadBacklog, loadObservations } from "../grading/context.js";
 import { getLessonView } from "../repositories/lessons.js";
 
@@ -29,6 +29,11 @@ export interface BacklogItem {
   /** The quiz the topic is due in, e.g. "K1". */
   dueQuiz: string;
   reason: string;
+  /**
+   * The topic is deferred (not yet covered by the lecturer): shown to the planner, never tested.
+   * Set by `loadQuizContext` only; absent means not deferred.
+   */
+  deferred?: boolean;
 }
 
 export interface EarlierLesson {
@@ -54,8 +59,8 @@ export interface QuizContext {
   topics: QuizTopicInput[];
   /**
    * Weak topics of earlier classes (rated ✗ or ~, or with misconception history) plus every
-   * unresolved backlog topic of an earlier class: repeat candidates. Only from the classes in
-   * `earlierLessons`.
+   * unresolved, not deferred backlog topic of an earlier class: repeat candidates. Deferred topics
+   * are never repeat candidates. Only from the classes in `earlierLessons`.
    */
   earlierTopics: (QuizTopicInput & { classNumber: number })[];
   /**
@@ -121,8 +126,30 @@ export function loadQuizContext(db: Db, classId: number): QuizContext {
     .orderBy(asc(classTable.number))
     .all();
   // Unresolved backlog items must be coverable as repeats, weak or not.
-  const backlog = loadBacklog(db, row.cls.courseId);
-  const backlogKeys = new Set(backlog.map((b) => JSON.stringify([b.topic, b.classNumber])));
+  const deferredKeys = new Set(
+    db
+      .select({ name: topicTable.name, classNumber: classTable.number })
+      .from(backlogItem)
+      .innerJoin(topicTable, eq(topicTable.id, backlogItem.topicId))
+      .innerJoin(classTable, eq(classTable.id, topicTable.classId))
+      .where(
+        and(
+          eq(backlogItem.courseId, row.cls.courseId),
+          isNull(backlogItem.resolvedAt),
+          eq(topicTable.deferred, true),
+        ),
+      )
+      .all()
+      .map((b) => JSON.stringify([b.name, b.classNumber])),
+  );
+  const backlog: BacklogItem[] = loadBacklog(db, row.cls.courseId).map((b) => ({
+    ...b,
+    deferred: deferredKeys.has(JSON.stringify([b.topic, b.classNumber])),
+  }));
+  // A deferred topic is never a repeat candidate; it stays in the backlog list only.
+  const backlogKeys = new Set(
+    backlog.filter((b) => !b.deferred).map((b) => JSON.stringify([b.topic, b.classNumber])),
+  );
   const candidatesOf: {
     cls: (typeof earlierClasses)[number];
     lesson: LessonView;
@@ -135,7 +162,8 @@ export function loadQuizContext(db: Db, classId: number): QuizContext {
     const all = view.topics.map(toTopicInput);
     const inBacklog = (t: QuizTopicInput) =>
       backlogKeys.has(JSON.stringify([t.name, earlier.number]));
-    const topics = all.filter((t) => isRepeatCandidate(t) || inBacklog(t));
+    // Deferred topics are never repeat candidates, weak or on the backlog.
+    const topics = all.filter((t) => !t.deferred && (isRepeatCandidate(t) || inBacklog(t)));
     if (topics.length > 0) {
       candidatesOf.push({ cls: earlier, lesson: view, topics, hasBacklog: topics.some(inBacklog) });
     }
