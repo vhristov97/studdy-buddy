@@ -36,7 +36,7 @@ You receive, in the user message:
 
 # What the plan fixes (never change it)
 
-For every question: id, order, type, topic, ref and extra stay exactly as planned. For mc: the number of options is mcOptionCount and the correct option sits at index mcCorrectIndex ("answer" = that index). For num: the value the plan gives is the answer. The key facts of the plan are the truth: the correct answer says what the plan's answer says, and open keys cover at least the plan's keyPoints. The header (code, title, subtitle, chips) is copied from the plan. The quiz has exactly the plan's questions, no more and no fewer.
+For every question: id, order, type, topic, ref and extra stay exactly as planned. For mc: the number of options is mcOptionCount and the correct option sits at index mcCorrectIndex ("answer" = that index; this balances the positions of the correct answers over the quiz). For num: the value the plan gives is the answer. The key facts of the plan are the truth: the correct answer says what the plan's answer says, and open keys cover at least the plan's keyPoints. The header (code, title, subtitle, chips) is copied from the plan. The quiz has exactly the plan's questions, no more and no fewer.
 If something in the plan looks wrong (the answer contradicts the lesson, the angle is unclear, the planned number of options is too few for good distractors), do NOT change it. Build the question as planned and add an entry to "flags" with the question id and what looks wrong. Without such problems, "flags" is an empty list.
 
 # What you own
@@ -52,7 +52,7 @@ Wording, distractors, match rows, clean numbers, expanded open-question keys and
 - mc options are plain texts without letters or numbers ("A)", "1."): the player adds the labels. The correct option is at mcCorrectIndex, and the other options go around it.
 - num: choose numbers that make the arithmetic come out cleanly (round values the student can compute by hand). The prompt names the unit that the answer is expected in. "answer" is a number, "tolerance" a non-negative number (0 for an exact value, otherwise the rounding the student may reasonably use), "unit" the unit string or null when the answer is unitless.
 - match: "rows" are the items to match, "choices" the shared options for the dropdowns, "answer[i]" is the index of the choice that belongs to row i. Shuffle: the rows' answers must NOT follow the order of the choices; at most one row may have answer[i] === i. There may be one extra choice that matches no row. Every pairing must be unambiguous.
-- Every closed question has an explanation (Serbian, 2-4 sentences) that says why the right answer is right, why the tempting wrong answer is wrong, and names the concept.
+- Every closed question has an explanation (Serbian, 2-4 sentences) that says why the right answer is right, why the tempting wrong answer is wrong, and names the concept. In explanations (and anywhere else) refer to options by their text, never by letter or position ("opcija B", "prva opcija", "treći odgovor"): the player may show them in another order or with other labels.
 - Never write a "Ne znam" option: the player adds it.
 
 ## Open questions
@@ -181,13 +181,6 @@ export function quizDraftSchema(plan: QuizPlan): z.ZodType<QuizDraft> {
             at("options"),
           );
         }
-        if (planned.mcCorrectIndex !== null && q.answer !== planned.mcCorrectIndex) {
-          issue(
-            `${q.id}: the correct option must be at index ${planned.mcCorrectIndex} as planned, ` +
-              `not ${q.answer}. Reorder the options.`,
-            at("answer"),
-          );
-        }
       }
     });
 
@@ -228,12 +221,53 @@ export function quizBuilderSpec(
   };
 }
 
+/**
+ * Puts every mc question's correct option at the index the plan assigns, by swapping it with the
+ * option that sits there. The planned index only exists to balance the correct-answer positions,
+ * so the app enforces it instead of asking a cheap model to get it right. Pure.
+ */
+export function normalizeQuizDraft(plan: QuizPlan, draft: QuizDraft): QuizDraft {
+  const planned = new Map(plan.questions.map((q) => [q.id, q]));
+  return {
+    ...draft,
+    quiz: {
+      ...draft.quiz,
+      questions: draft.quiz.questions.map((q) => {
+        if (q.type !== "mc") return q;
+        const target = planned.get(q.id)?.mcCorrectIndex;
+        if (
+          target === null ||
+          target === undefined ||
+          target === q.answer ||
+          target < 0 ||
+          target >= q.options.length ||
+          q.answer < 0 ||
+          q.answer >= q.options.length
+        ) {
+          return q;
+        }
+        const options = [...q.options];
+        options[q.answer] = q.options[target]!;
+        options[target] = q.options[q.answer]!;
+        return { ...q, options, answer: target };
+      }),
+    },
+  };
+}
+
 /** A multi-turn builder: send the build message, then fix rounds on the same conversation. */
 export function openQuizBuilderSession(
   plan: QuizPlan,
   opts: QuizBuilderOptions = {},
 ): StageSession<QuizDraft> {
-  return openStageSession(quizBuilderSpec(plan, opts));
+  const session = openStageSession(quizBuilderSpec(plan, opts));
+  return {
+    get agentId() {
+      return session.agentId;
+    },
+    send: async (message) => normalizeQuizDraft(plan, await session.send(message)),
+    close: () => session.close(),
+  };
 }
 
 /** One-shot build, without fix cycles. */
@@ -244,8 +278,11 @@ export async function buildQuiz(
   earlierLessons: EarlierLesson[],
   opts: QuizBuilderOptions = {},
 ): Promise<QuizDraft> {
-  return runStage(
-    quizBuilderSpec(plan, opts),
-    buildQuizBuilderMessage({ plan, lessonMd, notesMisconceptions, earlierLessons }),
+  return normalizeQuizDraft(
+    plan,
+    await runStage(
+      quizBuilderSpec(plan, opts),
+      buildQuizBuilderMessage({ plan, lessonMd, notesMisconceptions, earlierLessons }),
+    ),
   );
 }

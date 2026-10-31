@@ -10,6 +10,7 @@ import {
   buildQuizBuilderInstruction,
   buildQuizBuilderMessage,
   buildQuizFixMessage,
+  normalizeQuizDraft,
   openQuizBuilderSession,
   quizBuilderSpec,
   quizDraftSchema,
@@ -35,20 +36,46 @@ function issuesOf(draft: unknown): string {
   return result.success ? "" : result.error.issues.map((i) => i.message).join("\n");
 }
 
+function mcAt(draft: QuizDraft, i: number) {
+  const q = draft.quiz.questions[i]!;
+  if (q.type !== "mc") throw new Error("not mc");
+  return q;
+}
+
+describe("normalizeQuizDraft", () => {
+  it("accepts a correct option at the wrong index and moves it to the planned one", () => {
+    const wrong = draftFixture();
+    const q = mcAt(wrong, 0); // planned index 1
+    const correctText = q.options[q.answer]!;
+    const original = [...q.options];
+    const swapped = [...original];
+    [swapped[1], swapped[2]] = [swapped[2]!, swapped[1]!];
+    q.options = swapped;
+    q.answer = 2;
+    expect(issuesOf(wrong)).toBe("");
+
+    const fixed = normalizeQuizDraft(planFixture(), wrong);
+    const nq = mcAt(fixed, 0);
+    expect(nq.answer).toBe(1);
+    expect(nq.options[1]).toBe(correctText);
+    expect([...nq.options].sort()).toEqual([...original].sort());
+    // only the two swapped positions differ from the wrong draft's options
+    expect(nq.options.filter((o, i) => o !== q.options[i])).toHaveLength(2);
+    // pure: the input is untouched
+    expect(q.answer).toBe(2);
+    expect(q.options).toEqual(swapped);
+  });
+
+  it("leaves a draft with every correct option in place unchanged", () => {
+    expect(normalizeQuizDraft(planFixture(), draftFixture())).toEqual(draftFixture());
+  });
+});
+
 const bad: [string, () => QuizDraft, string][] = [
   [
     "a wrong quiz code",
     () => mutated((d) => void (d.quiz.code = "P09")),
     'quiz.code must be "P02"',
-  ],
-  [
-    "a changed mc answer index",
-    () =>
-      mutated((d) => {
-        const q = d.quiz.questions[0]!;
-        if (q.type === "mc") q.answer = 2;
-      }),
-    "correct option must be at index 1 as planned, not 2",
   ],
   [
     "a changed mc option count",
@@ -324,6 +351,30 @@ describe("quiz builder with FakeRunner (no API)", () => {
   it.each(bad)("repairs %s", async (_label, make) => {
     queue = [fakeJsonAnswer(make()), fakeJsonAnswer(draftFixture())];
     await expect(buildQuiz(planFixture(), "Lekcija", [], [])).resolves.toEqual(draftFixture());
+    expect(inner.calls).toHaveLength(2);
+  });
+
+  it("returns normalized drafts from one-shot builds and sessions", async () => {
+    const wrong = draftFixture();
+    const q = mcAt(wrong, 1); // planned index 2
+    const correctText = q.options[q.answer]!;
+    const other = q.options[0]!;
+    q.options[0] = correctText;
+    q.options[q.answer] = other;
+    q.answer = 0;
+
+    queue = [fakeJsonAnswer(wrong), fakeJsonAnswer(wrong)];
+    const built = await buildQuiz(planFixture(), "Lekcija", [], []);
+    expect(built).toEqual(draftFixture());
+
+    const session = openQuizBuilderSession(planFixture());
+    try {
+      const result = await session.send("Napravi kviz");
+      expect(mcAt(result, 1).answer).toBe(2);
+      expect(mcAt(result, 1).options[2]).toBe(correctText);
+    } finally {
+      session.close();
+    }
     expect(inner.calls).toHaveLength(2);
   });
 
