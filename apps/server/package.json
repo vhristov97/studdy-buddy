@@ -22,6 +22,7 @@
     "typecheck": "tsc --noEmit",
     "smoke:agent": "tsx scripts/smoke-agent.ts",
     "extract": "tsx scripts/extract.ts",
+    "lesson:try": "tsx scripts/try-lesson.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts"
   },
