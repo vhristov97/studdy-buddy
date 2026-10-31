@@ -9,11 +9,13 @@ export const MAX_OPEN_ANSWER_LENGTH = 20000;
 export const EMPTY_SUBMISSION_MESSAGE = "Nijedno pitanje nije odgovoreno.";
 
 /**
- * Whether a numeric answer is within tolerance of the key. The slack for floating-point noise
- * (0.1 + 0.2 vs 0.3) scales with the magnitudes, so tiny answers are not swamped by it.
+ * Whether a numeric answer is within tolerance of the key. Zero tolerance means an exact match
+ * (students type decimal literals, so no float arithmetic is involved). With a positive tolerance
+ * the slack only absorbs the rounding error of the subtraction (52.7 - 52.6 vs 0.1).
  */
 function withinTolerance(value: number, answer: number, tolerance: number): boolean {
-  const slack = 4 * Number.EPSILON * Math.max(1e-300, Math.abs(value), Math.abs(answer));
+  if (tolerance === 0) return value === answer;
+  const slack = Number.EPSILON * Math.max(Math.abs(value), Math.abs(answer));
   return Math.abs(value - answer) <= tolerance + slack;
 }
 

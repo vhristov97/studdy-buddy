@@ -36,13 +36,37 @@ describe("scoreQuiz: num", () => {
     expect(resultOf({ q2: 11.99 }, "q2").status).toBe("wrong");
   });
 
-  it("tolerates floating-point noise at the edge", () => {
-    const q = Quiz.parse({
-      ...validQuiz,
-      questions: [{ ...validQuiz.questions[1]!, answer: 0.3, tolerance: 0 }],
-    });
-    expect(scoreQuiz(q, { q2: 0.1 + 0.2 }).results[0]!.status).toBe("correct");
-    expect(scoreQuiz(q, { q2: 0.31 }).results[0]!.status).toBe("wrong");
+  it("matches exactly at zero tolerance (0.1 + 0.2 is intentionally wrong for 0.3)", () => {
+    const status = (answer: number, value: number, tolerance: number) =>
+      scoreQuiz(
+        Quiz.parse({
+          ...validQuiz,
+          questions: [{ ...validQuiz.questions[1]!, answer, tolerance }],
+        }),
+        { q2: value },
+      ).results[0]!.status;
+    expect(status(1e16, 1e16 + 2, 0)).toBe("wrong");
+    expect(status(1e16, 1e16, 0)).toBe("correct");
+    expect(status(0.3, 0.3, 0)).toBe("correct");
+    expect(status(0.3, 0.1 + 0.2, 0)).toBe("wrong");
+    expect(status(0, 1e-9, 0)).toBe("wrong");
+  });
+
+  it("absorbs only subtraction rounding error at positive tolerance", () => {
+    const status = (answer: number, value: number, tolerance: number) =>
+      scoreQuiz(
+        Quiz.parse({
+          ...validQuiz,
+          questions: [{ ...validQuiz.questions[1]!, answer, tolerance }],
+        }),
+        { q2: value },
+      ).results[0]!.status;
+    expect(status(52.6, 52.7, 0.1)).toBe("correct");
+    expect(status(52.6, 52.5, 0.1)).toBe("correct");
+    expect(status(52.6, 52.71, 0.1)).toBe("wrong");
+    expect(status(20, 15, 5)).toBe("correct");
+    expect(status(20, 25, 5)).toBe("correct");
+    expect(status(20, 25.0001, 5)).toBe("wrong");
   });
 
   it("does not let the float slack swamp tiny answers", () => {
