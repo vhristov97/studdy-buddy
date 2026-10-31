@@ -47,6 +47,15 @@ const STORAGE_TRY_WINDOW = 200;
 
 const EXTERNAL_URL = String.raw`(?:https?:)?\/\/`;
 
+/** The raw value of attribute `name` in one start tag; null when the tag does not have it. */
+function tagAttr(tag: string, name: string): string | null {
+  const match = new RegExp(
+    String.raw`[\s"'/]${name}\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]*))`,
+    "i",
+  ).exec(tag);
+  return match ? (match[1] ?? match[2] ?? match[3] ?? "") : null;
+}
+
 /** Words of a `<title>` / plan title, split on whitespace. */
 export function countTitleWords(title: string): number {
   return title.split(/\s+/).filter(Boolean).length;
@@ -156,44 +165,73 @@ export function validateVizHtml(html: string): VizReport {
   // http(s):// or // in src/href/poster/action of any tag. Anchors are handled separately below.
   const attrPattern = new RegExp(
     String.raw`\s(src|href|xlink:href|poster|action|srcset)\s*=\s*["']?\s*${EXTERNAL_URL}`,
-    "gi",
+    "i",
   );
-  external: for (const tag of page.matchAll(/<([a-z][a-z0-9-]*)\b[^>]*>/gi)) {
+  for (const tag of page.matchAll(/<([a-z][a-z0-9-]*)\b[^>]*>/gi)) {
     const name = tag[1]!.toLowerCase();
-    if (name === "script" || name === "link") continue; // reported above
-    for (const attr of tag[0].matchAll(attrPattern)) {
-      if (name === "a" || name === "area") {
-        if (attr[1]!.toLowerCase() !== "href") continue;
-        // Clicking it would navigate the sandboxed frame away from the page to an arbitrary site.
-        // CSP has no reliable directive against frame self-navigation, so this check is the
-        // main guard (the serving headers and the iframe sandbox are defense in depth).
-        error(
-          "external_link_anchor",
-          `<${name}> links to an external URL (${tag[0].slice(0, 80)}...); no external links, cite sources as plain text.`,
-        );
-        continue;
-      }
+    if (name === "script" || name === "link" || name === "a" || name === "area") continue; // handled elsewhere
+    if (attrPattern.test(tag[0])) {
       error(
         "external_resource",
         `<${name}> references an external URL (${tag[0].slice(0, 80)}...); the page must not load external resources.`,
       );
-      break external;
+      break;
     }
   }
 
-  if (/\bwindow\s*\.\s*open\s*\(/.test(page)) {
+  // Anchors: an allow-list. Only an empty href or an in-page fragment (#id) is fine; any other
+  // value (http(s), mailto:, javascript:, data:, tel:, file:, a relative or absolute path, ...)
+  // would navigate the sandboxed frame away from the page. CSP has no reliable directive against
+  // frame self-navigation, so this check is the main guard (the serving headers and the iframe
+  // sandbox are defense in depth).
+  for (const tag of page.matchAll(/<(a|area)\b[^>]*>/gi)) {
+    const href = tagAttr(tag[0], "href");
+    if (href === null) continue;
+    const value = href.trim();
+    if (value === "" || value.startsWith("#")) continue;
     error(
-      "navigation_api",
-      "window.open() is not allowed; the page must not navigate or open windows.",
+      "external_link_anchor",
+      `<${tag[1]!.toLowerCase()}> links away from the page (${tag[0].slice(0, 80)}...); only href="#id" links inside the page are allowed, cite sources as plain text.`,
     );
   }
+  for (const tag of page.matchAll(/<(?:form|button|input)\b[^>]*>/gi)) {
+    for (const attr of ["action", "formaction"]) {
+      const value = tagAttr(tag[0], attr);
+      if (value !== null && value.trim() !== "") {
+        error(
+          "navigation_api",
+          `${attr}="${value.trim().slice(0, 40)}" is not allowed; forms must not submit or navigate.`,
+        );
+      }
+    }
+  }
+  if (/<base\b[^>]*\bhref\s*=/i.test(page)) {
+    error(
+      "navigation_api",
+      "<base href> is not allowed; the page must not change how links resolve.",
+    );
+  }
+
+  // Navigation of the page itself. Anchored on the receivers (bare identifier, window, self, top,
+  // parent, document), so a simulation property like `node.location = next` is not flagged.
+  const globalRecv = String.raw`(?:(?:window|self|top|parent|globalThis)\s*\.\s*)*(?:window|self|top|parent|document|globalThis)\s*\.\s*`;
+  const location = String.raw`(?:(?<![.\w$])${globalRecv}|(?<![.\w$])(?<!\b(?:const|let|var|function)\s+))location`;
   if (
-    /(?<!\b(?:const|let|var)\s+)\blocation\s*(?:\.\s*href\s*)?=(?!=)/.test(page) ||
-    /\blocation\s*\.\s*(?:assign|replace)\s*\(/.test(page)
+    new RegExp(String.raw`${location}\s*(?:\.\s*href\s*)?=(?!=)`).test(page) ||
+    new RegExp(String.raw`${location}\s*\.\s*(?:assign|replace)\s*\(`).test(page)
   ) {
     error(
       "navigation_api",
       "Assigning location / location.href or calling location.assign() / location.replace() is not allowed; the page must not navigate.",
+    );
+  }
+  if (
+    /(?<![.\w$])(?:(?:window|self|top|parent|globalThis)\s*\.\s*)+open\s*\(/.test(page) ||
+    /(?<![.\w$])(?<!\bfunction\s+)open\s*\((?![^()]*\)\s*\{)/.test(page)
+  ) {
+    error(
+      "navigation_api",
+      "window.open() is not allowed; the page must not navigate or open windows.",
     );
   }
   if (/<meta\b[^>]*\bhttp-equiv\s*=\s*["']?\s*refresh\b/i.test(page)) {

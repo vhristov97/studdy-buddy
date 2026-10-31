@@ -147,10 +147,63 @@ describe("validateVizHtml", () => {
       "<a href=//example.com/x>x</a>",
       '<a class="s" target="_blank" href=" https://example.com">x</a>',
       '<area shape="rect" coords="0,0,1,1" href="https://example.com">',
+      '<a href="mailto:a@b.test">x</a>',
+      '<a href="javascript:alert(1)">x</a>',
+      '<a href=" JavaScript:void(0)">x</a>',
+      '<a href="data:text/html,hi">x</a>',
+      '<a href="tel:+381">x</a>',
+      '<a href="file:///etc/passwd">x</a>',
+      '<a href="foo.html">x</a>',
+      '<a href="/x">x</a>',
+      '<a href="?q=1">x</a>',
+      "<a href=foo.html>x</a>",
     ]) {
       expect(errorsOf(VALID_HTML.replace("<button", `${tag}<button`)), tag).toContain(
         "external_link_anchor",
       );
+    }
+  });
+
+  it("allows in-page and empty anchors", () => {
+    for (const tag of [
+      '<a href="#id">x</a>',
+      '<a href="">x</a>',
+      "<a>x</a>",
+      "<a href=#id>x</a>",
+    ]) {
+      expect(errorsOf(VALID_HTML.replace("<button", `${tag}<button`)), tag).toEqual([]);
+    }
+  });
+
+  it("rejects form actions and base href", () => {
+    for (const tag of [
+      '<form action="submit.html"></form>',
+      '<form action="#x"></form>',
+      '<base href="https://x.test/">',
+      '<base href="/">',
+    ]) {
+      expect(errorsOf(VALID_HTML.replace("<button", `${tag}<button`)), tag).toContain(
+        "navigation_api",
+      );
+    }
+    expect(errorsOf(VALID_HTML.replace("<button", '<form action=""></form><button'))).toEqual([]);
+  });
+
+  it("does not flag simulation properties named location or open", () => {
+    for (const code of [
+      "node.location = nextPosition",
+      "this.location = start",
+      "obj.location.href = 'x'",
+      "const location = { x: 1 }",
+      "let location = 3",
+      "if (a.location == b) {}",
+      "x = window.location.hash",
+      "class Door { open(d) { return d; } }",
+      "function open(door) { return door; }",
+      "door.open(1)",
+    ]) {
+      const html = VALID_HTML.replace("let saved = null;", `${code}; let saved = null;`);
+      expect(errorsOf(html), code).toEqual([]);
     }
   });
 
@@ -162,6 +215,13 @@ describe("validateVizHtml", () => {
       'location = "https://x.test"',
       'document.location.assign("https://x.test")',
       'top.location.replace("https://x.test")',
+      'window.location = "https://x.test"',
+      'self.location = "x"',
+      'document.location.replace("x")',
+      'window.top.location.href = "x"',
+      'location.assign("x")',
+      'open("https://x.test")',
+      'self.open("x")',
     ]) {
       const html = VALID_HTML.replace("let saved = null;", `${code}; let saved = null;`);
       expect(errorsOf(html), code).toContain("navigation_api");
