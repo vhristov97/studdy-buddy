@@ -1,0 +1,68 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { assertTelemetryDisabled } from "./runtime.js";
+
+describe("assertTelemetryDisabled", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "studdy-telemetry-test-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it.each(["MOZAIK_API_KEY", "MOZAIK_PROJECT_KEY"])("throws when %s is set in env", (key) => {
+    const env: NodeJS.ProcessEnv = { [key]: "secret-value" };
+    expect(() => assertTelemetryDisabled({ env, cwd: dir, repoRoot: dir })).toThrow(key);
+    expect(() => assertTelemetryDisabled({ env, cwd: dir, repoRoot: dir })).not.toThrow(
+      /secret-value/,
+    );
+    expect(env.MOZAIK_CREDENTIALS_FILE).toBeUndefined();
+  });
+
+  it.each(["MOZAIK_API_KEY", "MOZAIK_PROJECT_KEY"])(
+    "throws when %s is set in <cwd>/.env",
+    (key) => {
+      fs.writeFileSync(path.join(dir, ".env"), `OTHER=1\n${key}="abc"\n`);
+      expect(() => assertTelemetryDisabled({ env: {}, cwd: dir, repoRoot: dir })).toThrow(key);
+    },
+  );
+
+  it("ignores empty values in env and in .env", () => {
+    fs.writeFileSync(path.join(dir, ".env"), "MOZAIK_API_KEY=\nMOZAIK_PROJECT_KEY=\n");
+    const env: NodeJS.ProcessEnv = { MOZAIK_API_KEY: "", MOZAIK_PROJECT_KEY: "  " };
+    expect(() => assertTelemetryDisabled({ env, cwd: dir, repoRoot: dir })).not.toThrow();
+  });
+
+  it.each(["MOZAIK_API_KEY", "MOZAIK_PROJECT_KEY"])(
+    "throws when %s is set only in <repoRoot>/.env",
+    (key) => {
+      const repoRoot = path.join(dir, "root");
+      const cwd = path.join(dir, "elsewhere");
+      fs.mkdirSync(repoRoot);
+      fs.mkdirSync(cwd);
+      fs.writeFileSync(path.join(repoRoot, ".env"), `${key}=abc\n`);
+      const env: NodeJS.ProcessEnv = {};
+      expect(() => assertTelemetryDisabled({ env, cwd, repoRoot })).toThrow(key);
+      expect(env.MOZAIK_CREDENTIALS_FILE).toBeUndefined();
+    },
+  );
+
+  it("accepts a missing .env and disables the SDK credentials lookup", () => {
+    const env: NodeJS.ProcessEnv = { ANTHROPIC_API_KEY: "x" };
+    assertTelemetryDisabled({ env, cwd: dir, repoRoot: dir });
+    expect(env.MOZAIK_CREDENTIALS_FILE).toBe(os.devNull);
+    // Same lookup as the SDK's readAll(): parse the file, treat any failure as "no credentials".
+    let credentials: unknown;
+    try {
+      credentials = JSON.parse(fs.readFileSync(env.MOZAIK_CREDENTIALS_FILE!, "utf8"));
+    } catch {
+      credentials = {};
+    }
+    expect(credentials).toEqual({});
+  });
+});

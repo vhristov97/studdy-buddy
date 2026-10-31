@@ -18,6 +18,7 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "smoke:agent": "npm run smoke:agent -w @studdy/server --",
     "db:generate": "npm run db:generate -w @studdy/server",
     "db:migrate": "npm run db:migrate -w @studdy/server",
     "start": "npm run build && npm run start -w @studdy/server"

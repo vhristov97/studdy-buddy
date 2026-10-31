@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "@fastify/static": "10.1.8",
+    "@mozaik-ai/core": "4.1.0",
     "@studdy/shared": "*",
     "better-sqlite3": "13.0.3",
     "drizzle-orm": "0.45.4",
@@ -15,6 +16,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
+    "smoke:agent": "tsx scripts/smoke-agent.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts"
   },
