@@ -141,15 +141,28 @@ Opus checks every task with `npm run typecheck && npm run lint && npm test`, rea
 
 State and context a fresh session needs. Keep this section current at every milestone boundary.
 
-### Where things stand (after M5, merged in PR #10)
-- **Done**: M0–M5.
-- **Next, in parallel** (the user's decision):
-  - **M6** on branch `m6-grading` in this checkout;
-  - **M7** on branch `m7-viz` in the git worktree `../studdy-buddy-m7`, which has its own `node_modules` and a copy of `.env`.
-- **Same workflow for both**: Opus plans and verifies, Sonnet implements, and each branch gets its own PR and Devin loop.
-- **Merge order**: M6 merges first. Then M7 rebases on `main`; on a migration conflict, delete M7's migration, re-run `npm run db:generate` on top of `main`'s, and re-test.
-- **Shared files likely to conflict** (keep edits small there): `db/schema.ts`, `pipeline/events.ts`, `JOB_KINDS`, `lib/pipeline.ts`, `PipelinePanel`, `docs/PLAN.md` checkboxes and `README.md`.
-- **M7 real-API runs**: the worktree's `DATA_DIR` defaults to its own empty `./data`. For runs on class 01, point `DATA_DIR` at a copy of this checkout's `data/`.
+### Where things stand (after M6 and M7, merged in PRs #11 and #12)
+- **Done**: M0–M7. Next: **M8 on branch `m8-cumulative`** (already created from `main`), then M9.
+- **Parallel setup is over**: the M7 worktree `../studdy-buddy-m7` is no longer needed. Its branch `m7-visualizations` is merged, and the old remote `m7-viz` is stale. Remove both when convenient (`git worktree remove ../studdy-buddy-m7`).
+- **Agent models**: local `.env` runs `MODEL_PLANNER=claude-sonnet-4-6` and `MODEL_BUILDER=claude-haiku-4-5` for cost (the user's decision). Issue #13 tracks making those the code defaults. Mozaik 4.1.0 doesn't know `claude-haiku-5-5`.
+- **Grading (M6)**:
+  - `submission.created` triggers a `grading` job (serialized per course), then `grader` (`agents/grader.ts`, `GradingResult`).
+  - Invariants are re-checked on the server, then one transaction writes `result`, topic events (`quiz` per question, `grading` per miss / fix / rating), ratings, `backlog_item` (one unresolved per topic, with a class number), `next_step` (replaced wholesale) and `learner_observation`.
+  - `GET /api/courses/:id/progress` returns next steps, backlog, topics, quiz history, observations, visualizations, and the session-start flags (draft or failed classes without a lesson, ungraded submissions).
+  - Progress page: `kursevi/:id/napredak`. Regrade: `POST /api/submissions/:id/grade`.
+  - Grading context: `grading/context.ts`.
+- **Quiz planning after M6**:
+  - The planner gets the real backlog (with class numbers, deferred items marked) and observations.
+  - Earlier weak topics, plus every unresolved non-deferred backlog topic of an earlier class, are repeat candidates, with their lessons (up to 3 lessons; backlog classes always kept).
+  - Repeat plan rows carry `classNumber`, and a repeat's `ref` must start with `Predavanje <N> ›`.
+- **Visualizations (M7)**:
+  - On `lesson.ready`: a `viz_topics` job runs `viz-identifier` and stores `viz_suggestion` rows (0–5; the user can add their own).
+  - Selecting a suggestion emits `viz.selected`, which starts one parallel `viz` job per suggestion: planner, builder session, then `validateVizHtml` contract check plus reviewer, with ≤3 fix rounds, then release to `visualization`.
+  - Serving: `/viz/:id` with a strict CSP, shown in a sandboxed iframe on `vizualizacije/:id`. Links come from the lesson, course and progress pages.
+  - The contract checker uses a quote-aware start-tag tokenizer. Only in-page `#` anchors are allowed, and only page-level navigation is an error.
+- **Screenshots**:
+  - Pages with an SSE stream: use `--timeout=6000` instead of `--virtual-time-budget`.
+  - The sandboxed viz iframe only renders with `--disable-features=IsolateOrigins,site-per-process`.
 - **Player and submissions (M5)**:
   - `GET /api/quizzes/:id` returns `PublicQuiz` (no answers).
   - `POST /api/quizzes/:id/submissions` scores on the server with the shared `scoreQuiz`, rejects empty submissions, stores a `submission` row (`answers_json`, `results_json`, `dont_know_json`, `auto_score`/`auto_max`, `open_pending`), emits **`submission.created` `{quizId, submissionId}`** (M6 grading starts from this), and returns feedback.
@@ -196,6 +209,19 @@ State and context a fresh session needs. Keep this section current at every mile
   - class 01 "Uvod" (id 1) is **`ready`** with a real generated lesson (20 topics, 4 notes misconceptions). Use it as the M4 quiz-planner input and for M4/M5 screenshots.
 - `npm run extract -- <file>` prints extracted text. `npm run lesson:try -- --class <id>` runs the lesson writer alone, without the DB pipeline (real API; output goes to `data/tmp/`).
 - Screenshots: `screenshots/<milestone>/` (git-ignored). For long pages, use `--window-size=1280,50000 --force-device-scale-factor=0.5`, then crop with `magick`.
+
+### M8 guidance
+- **Cadence (spec §11)**: K1 after class `cadence` covers classes 1..cadence, K2 after 2·cadence covers 1..2·cadence, and so on; a final review comes before the exam. A course without a cadence gets no automatic K, but the user can trigger one.
+- **Trigger**: offer `K<n>` (a button on the course and progress pages, plus a session-start flag "K<n> je na redu") once the class count with a ready lesson reaches n·cadence and `K<n>` doesn't exist yet. Don't build it unasked.
+- **Planner input**:
+  - the covered lessons (could be many: pass them all, or condensed per-topic sections if the context gets too big; check sizes);
+  - **every backlog item due for that K, which must be included** (spec §11);
+  - weak topics across the covered classes;
+  - observations.
+  Plan rows need a class number for every question (all are "repeats" of some class). Generalise `classNumber`/`ref` validation: for a K quiz, every row has `classNumber` and a `Predavanje N ›` ref.
+- **Build and review**: reuse the M4 build/review loop (`quiz-branch.ts`). K quizzes have `class_id` null. Grading currently skips quizzes without a class (`grading-branch.ts` logs and skips), so make K quizzes gradeable: the job needs a class for SSE, so use the latest covered class or relax `generation_job.class_id` for course-level jobs.
+- **Results**: backlog items due for K are resolved or updated by grading, as now. Add a cumulative schedule to the progress page (test, coverage, when, result).
+- **Quality check**: real K1 needs ≥ cadence classes with lessons. The dev DB has 1 class (cadence 4), so test with a scratch course with cadence 1, or generate a second class from `samples/` (class 02) on a scratch copy.
 
 ### M5 guidance
 - **Player API**:
