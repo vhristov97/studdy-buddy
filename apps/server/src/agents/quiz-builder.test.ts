@@ -378,6 +378,33 @@ describe("quiz builder with FakeRunner (no API)", () => {
     expect(inner.calls).toHaveLength(2);
   });
 
+  it("sends the normalized quiz with the next message after a swap", async () => {
+    // The builder puts the correct option of q2 at index 0; the plan wants it at index 2.
+    const own = draftFixture();
+    const oq = mcAt(own, 1);
+    const swapped = oq.options[0]!;
+    oq.options[0] = oq.options[oq.answer]!;
+    oq.options[oq.answer] = swapped;
+    oq.answer = 0;
+    queue = [fakeJsonAnswer(own), fakeJsonAnswer(draftFixture())];
+
+    const session = openQuizBuilderSession(planFixture());
+    let normalized: QuizDraft;
+    try {
+      normalized = await session.send("Napravi kviz");
+      expect(mcAt(normalized, 1).answer).toBe(2);
+      await session.send("Ispravi opciju 2");
+    } finally {
+      session.close();
+    }
+    const firstMessage = seen[0]!.join("\n");
+    const secondMessage = seen[1]!.join("\n");
+    expect(firstMessage).not.toContain("trenutna verzija kviza");
+    expect(secondMessage).toContain("trenutna verzija kviza");
+    expect(secondMessage).toContain(JSON.stringify(normalized, null, 2));
+    expect(secondMessage).toContain("Ispravi opciju 2");
+  });
+
   it("keeps the conversation across a build and a fix round in one session", async () => {
     const fixed = draftFixture();
     fixed.quiz.questions[6]!.prompt = "Objasni zašto batch optimizuje propusnost, na primeru.";

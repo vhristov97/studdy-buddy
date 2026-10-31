@@ -261,11 +261,27 @@ export function openQuizBuilderSession(
   opts: QuizBuilderOptions = {},
 ): StageSession<QuizDraft> {
   const session = openStageSession(quizBuilderSpec(plan, opts));
+  // The builder's memory holds its own (pre-normalization) answers, but the reviewer sees the
+  // normalized quiz. Every later message therefore carries the current quiz as the source of
+  // truth, so position-specific fixes ("option 2 is too long") hit the right option.
+  let current: QuizDraft | undefined;
   return {
     get agentId() {
       return session.agentId;
     },
-    send: async (message) => normalizeQuizDraft(plan, await session.send(message)),
+    send: async (message) => {
+      const outgoing =
+        current === undefined
+          ? message
+          : [
+              "Ovo je trenutna verzija kviza kakva je sačuvana — redosled opcija je možda " +
+                "promenjen; primeni ispravke na OVU verziju i vrati kompletan {quiz, flags}:\n" +
+                JSON.stringify(current, null, 2),
+              message,
+            ].join("\n\n");
+      current = normalizeQuizDraft(plan, await session.send(outgoing));
+      return current;
+    },
     close: () => session.close(),
   };
 }

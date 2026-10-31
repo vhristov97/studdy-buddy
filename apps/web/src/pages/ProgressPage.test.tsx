@@ -319,6 +319,7 @@ describe("ProgressPage", () => {
       coversThrough: 4,
       status: "available",
       quizId: 11,
+      submissionId: null,
       submittedAt: null,
       totalScore: null,
       ...over,
@@ -391,12 +392,19 @@ describe("ProgressPage", () => {
             }),
             scheduleEntry({ code: "K4", coversThrough: 16, status: "due", quizId: null }),
             scheduleEntry({ code: "K5", coversThrough: 20, status: "building", quizId: null }),
+            scheduleEntry({
+              code: "K6",
+              coversThrough: 24,
+              status: "grading_failed",
+              quizId: 16,
+              submissionId: 77,
+            }),
           ],
         }),
       );
       const list = within(await screen.findByRole("region", { name: "Kumulativni testovi" }));
       const items = list.getAllByRole("listitem");
-      expect(items).toHaveLength(5);
+      expect(items).toHaveLength(6);
       expect(items[0]).toHaveTextContent("predavanja 1–4");
       expect(items[0]).toHaveTextContent("ocenjen");
       expect(items[0]).toHaveTextContent("Ukupno: 17,5");
@@ -414,12 +422,41 @@ describe("ProgressPage", () => {
       expect(items[3]).toHaveTextContent("na redu");
       expect(within(items[3]!).queryByRole("link")).not.toBeInTheDocument();
       expect(within(items[4]!).getByRole("status")).toHaveTextContent("pravi se…");
+      expect(items[5]).toHaveTextContent("ocenjivanje nije uspelo");
+      expect(within(items[5]!).getByRole("button", { name: "Oceni ponovo" })).toBeInTheDocument();
+    });
+
+    it("re-grades a review whose grading failed", async () => {
+      const { requests } = openWith(
+        progress({
+          cumulative: [scheduleEntry({ status: "grading_failed", submissionId: 77 })],
+        }),
+      );
+      await userEvent.click(await screen.findByRole("button", { name: "Oceni ponovo" }));
+      await waitFor(() =>
+        expect(
+          requests.some((r) => r.method === "POST" && r.path === "/api/submissions/77/grade"),
+        ).toBe(true),
+      );
     });
 
     describe("polling", () => {
       afterEach(() => vi.useRealTimers());
       const calls = (requests: { method: string; path: string }[]) =>
         requests.filter((r) => r.method === "GET" && r.path === "/api/courses/1/progress").length;
+
+      it("does not poll a review whose grading failed", async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        const { requests } = open(
+          progress({
+            cumulative: [scheduleEntry({ status: "grading_failed", submissionId: 77 })],
+          }),
+          { "GET /api/courses/1/cumulative": () => status() },
+        );
+        await screen.findByText("ocenjivanje nije uspelo");
+        await vi.advanceTimersByTimeAsync(20000);
+        expect(calls(requests)).toBe(1);
+      });
 
       it.each(["building", "submitted"] as const)(
         "refetches every 5 s while a review is %s, then stops",

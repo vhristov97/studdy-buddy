@@ -220,12 +220,36 @@ afterAll(() => {
 });
 
 describe("nextCumulativeCode", () => {
-  it("is ceil(class / cadence), or K1 without a cadence", () => {
-    expect(nextCumulativeCode(1, 4)).toBe("K1");
-    expect(nextCumulativeCode(4, 4)).toBe("K1");
-    expect(nextCumulativeCode(5, 4)).toBe("K2");
-    expect(nextCumulativeCode(9, 4)).toBe("K3");
-    expect(nextCumulativeCode(7, null)).toBe("K1");
+  const freshCourse = (...existing: string[]): number => {
+    const id = handle.db
+      .insert(course)
+      .values({ name: "Svež kurs", persona: "inženjer" })
+      .returning({ id: course.id })
+      .get().id;
+    for (const code of existing) addQuiz(id, null, code, { ...quizFixture(), code });
+    return id;
+  };
+
+  it("is the scheduled ceil(class / cadence) when no such review exists, or K1 without a cadence", () => {
+    const id = freshCourse();
+    expect(nextCumulativeCode(handle.db, id, 1, 4)).toBe("K1");
+    expect(nextCumulativeCode(handle.db, id, 4, 4)).toBe("K1");
+    expect(nextCumulativeCode(handle.db, id, 5, 4)).toBe("K2");
+    expect(nextCumulativeCode(handle.db, id, 9, 4)).toBe("K3");
+    expect(nextCumulativeCode(handle.db, id, 7, null)).toBe("K1");
+  });
+
+  it("never points at an existing review: without a cadence it follows K1, K2", () => {
+    const id = freshCourse("K1");
+    expect(nextCumulativeCode(handle.db, id, 7, null)).toBe("K2");
+    addQuiz(id, null, "K2", { ...quizFixture(), code: "K2" });
+    expect(nextCumulativeCode(handle.db, id, 7, null)).toBe("K3");
+  });
+
+  it("skips past a manual review that already exists, even for an early class", () => {
+    const id = freshCourse("K1");
+    expect(nextCumulativeCode(handle.db, id, 1, 4)).toBe("K2");
+    expect(nextCumulativeCode(handle.db, id, 9, 4)).toBe("K3");
   });
 });
 
@@ -304,12 +328,12 @@ describe("loadGradingContext", () => {
     });
   });
 
-  it("derives the next cumulative code from the class number and the cadence", () => {
-    expect(loadGradingContext(handle.db, sub2).nextCumulativeCode).toBe("K1");
+  it("derives the next cumulative code from the cadence, skipping the existing K1", () => {
+    expect(loadGradingContext(handle.db, sub2).nextCumulativeCode).toBe("K2");
     handle.db.update(course).set({ reviewCadence: 1 }).run();
     expect(loadGradingContext(handle.db, sub2).nextCumulativeCode).toBe("K2");
     handle.db.update(course).set({ reviewCadence: null }).run();
-    expect(loadGradingContext(handle.db, sub2).nextCumulativeCode).toBe("K1");
+    expect(loadGradingContext(handle.db, sub2).nextCumulativeCode).toBe("K2");
     handle.db.update(course).set({ reviewCadence: 4 }).run();
   });
 

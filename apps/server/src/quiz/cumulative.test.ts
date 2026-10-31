@@ -10,12 +10,19 @@ import {
   generationJob,
   lesson,
   quiz,
+  submission,
   topic,
   topicEvent,
 } from "../db/schema.js";
 import { ConflictError } from "../repositories/conflict.js";
 import { loadCumulativeContext } from "./context.js";
-import { cumulativeStatus, parseCumulativeCode, resolveCumulativeTarget } from "./cumulative.js";
+import {
+  cumulativeSchedule,
+  cumulativeStatus,
+  nextFreeCumulativeCode,
+  parseCumulativeCode,
+  resolveCumulativeTarget,
+} from "./cumulative.js";
 
 let dir: string;
 let handle: DatabaseHandle;
@@ -148,11 +155,43 @@ describe("cumulativeStatus", () => {
     expect(cumulativeStatus(db(), courseId).due).toBeNull();
   });
 
-  it("picks the earliest missing n when a later review exists", () => {
+  it("uses the smallest unused code even when only a later review exists", () => {
     const courseId = addCourse(2);
-    const ids = [1, 2, 3, 4].map((n) => addClass(courseId, n));
+    const ids = [1, 2, 3, 4, 5, 6].map((n) => addClass(courseId, n));
     addK(courseId, "K2", ids[3]!);
-    expect(cumulativeStatus(db(), courseId).due).toMatchObject({ code: "K1", coversThrough: 2 });
+    // K2 covers through class 4, so classes 5 and 6 are uncovered; the free code is K1.
+    expect(cumulativeStatus(db(), courseId).due).toEqual({
+      code: "K1",
+      coversThrough: 6,
+      classNumbers: [1, 2, 3, 4, 5, 6],
+    });
+  });
+
+  it("is coverage-based: an early manual K1 does not stand in for the scheduled one", () => {
+    const courseId = addCourse(4);
+    const ids = [1, 2].map((n) => addClass(courseId, n));
+    // Requested by hand after class 2, well before the cadence of 4.
+    addK(courseId, "K1", ids[1]!);
+    const due = (): unknown => cumulativeStatus(db(), courseId).due;
+    expect(due()).toBeNull();
+    ids.push(addClass(courseId, 3), addClass(courseId, 4), addClass(courseId, 5));
+    // Classes 3..5 are only 3 uncovered classes: not yet.
+    expect(due()).toBeNull();
+    ids.push(addClass(courseId, 6));
+    // Four uncovered classes (3..6): K2 is due and covers 1..6.
+    expect(due()).toEqual({ code: "K2", coversThrough: 6, classNumbers: [1, 2, 3, 4, 5, 6] });
+  });
+
+  it("covers one cadence step past the last review; the rest follows as the next review", () => {
+    const courseId = addCourse(2);
+    const ids = [1, 2, 3, 4, 5].map((n) => addClass(courseId, n));
+    addK(courseId, "K1", ids[0]!);
+    // Uncovered: 2..5 (4 classes): one step of 2, through class 3.
+    expect(cumulativeStatus(db(), courseId).due).toEqual({
+      code: "K2",
+      coversThrough: 3,
+      classNumbers: [1, 2, 3],
+    });
   });
 
   it("never has a due review without a cadence, but still lists existing ones", () => {
@@ -216,6 +255,16 @@ describe("resolveCumulativeTarget", () => {
     expect(resolveCumulativeTarget(db(), courseId).code).toBe("K2");
   });
 
+  it("uses the next free code covering everything for a manual request before the cadence", () => {
+    const courseId = addCourse(4);
+    const ids = [1, 2].map((n) => addClass(courseId, n));
+    expect(resolveCumulativeTarget(db(), courseId)).toMatchObject({
+      code: "K1",
+      throughClass: { id: ids[1] },
+      due: false,
+    });
+  });
+
   it("accepts an explicit non-due code and rejects existing codes and empty courses", () => {
     const courseId = addCourse(4);
     const ids = [1, 2].map((n) => addClass(courseId, n));
@@ -227,6 +276,88 @@ describe("resolveCumulativeTarget", () => {
     addK(courseId, "K3", ids[1]!);
     expect(() => resolveCumulativeTarget(db(), courseId, "K3")).toThrow(ConflictError);
     expect(() => resolveCumulativeTarget(db(), addCourse(2))).toThrow(ConflictError);
+  });
+});
+
+describe("nextFreeCumulativeCode", () => {
+  it("follows every existing review, or the one after a given review, never an existing code", () => {
+    const courseId = addCourse(null);
+    const ids = [1, 2].map((n) => addClass(courseId, n));
+    expect(nextFreeCumulativeCode(db(), courseId)).toBe("K1");
+    addK(courseId, "K1", ids[1]!);
+    expect(nextFreeCumulativeCode(db(), courseId)).toBe("K2");
+    addK(courseId, "K3", ids[1]!);
+    expect(nextFreeCumulativeCode(db(), courseId)).toBe("K4");
+    expect(nextFreeCumulativeCode(db(), courseId, { after: 1 })).toBe("K2");
+    expect(nextFreeCumulativeCode(db(), courseId, { after: 2 })).toBe("K4");
+    expect(nextFreeCumulativeCode(db(), courseId, { atLeast: 6 })).toBe("K6");
+  });
+});
+
+describe("cumulativeSchedule: grading status", () => {
+  function addSubmission(quizId: number): number {
+    return db()
+      .insert(submission)
+      .values({
+        quizId,
+        answersJson: {},
+        autoScore: 0,
+        autoMax: 0,
+        dontKnowJson: [],
+        resultsJson: [],
+        openPending: 1,
+      })
+      .returning({ id: submission.id })
+      .get().id;
+  }
+  function addGradingJob(classId: number, submissionId: number, status: "running" | "failed") {
+    db()
+      .insert(generationJob)
+      .values({
+        classId,
+        kind: "grading",
+        stage: "grader",
+        status,
+        attempt: 1,
+        submissionId,
+        error: status === "failed" ? "API" : null,
+      })
+      .run();
+  }
+  const entry = (courseId: number) => cumulativeSchedule(db(), courseId)[0]!;
+
+  it("is submitted while grading runs or has not started, grading_failed once the latest job failed", () => {
+    const courseId = addCourse(null);
+    const classId = addClass(courseId, 1);
+    const k1 = addK(courseId, "K1", classId);
+    expect(entry(courseId)).toMatchObject({ status: "available", submissionId: null });
+
+    const sub = addSubmission(k1);
+    expect(entry(courseId)).toMatchObject({ status: "submitted", submissionId: null });
+    addGradingJob(classId, sub, "running");
+    expect(entry(courseId)).toMatchObject({ status: "submitted", submissionId: null });
+    addGradingJob(classId, sub, "failed");
+    expect(entry(courseId)).toMatchObject({ status: "grading_failed", submissionId: sub });
+  });
+
+  it("goes back to submitted when the failed grading is restarted", () => {
+    const courseId = addCourse(null);
+    const classId = addClass(courseId, 1);
+    const sub = addSubmission(addK(courseId, "K1", classId));
+    addGradingJob(classId, sub, "failed");
+    addGradingJob(classId, sub, "running");
+    expect(entry(courseId).status).toBe("submitted");
+  });
+
+  it("looks at the latest submission only", () => {
+    const courseId = addCourse(null);
+    const classId = addClass(courseId, 1);
+    const k1 = addK(courseId, "K1", classId);
+    addGradingJob(classId, addSubmission(k1), "failed");
+    const second = addSubmission(k1);
+    expect(entry(courseId)).toMatchObject({ status: "submitted", submissionId: null });
+    addGradingJob(classId, second, "failed");
+    expect(entry(courseId)).toMatchObject({ status: "grading_failed", submissionId: second });
   });
 });
 

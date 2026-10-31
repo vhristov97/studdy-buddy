@@ -12,6 +12,7 @@ import {
   submission,
 } from "../db/schema.js";
 import { ConflictError } from "../repositories/conflict.js";
+import { gradingStateOf } from "../repositories/grading.js";
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 type DbOrTx = Db | Tx;
@@ -95,15 +96,41 @@ function existingCumulatives(
   return found.sort((a, b) => a.n - b.n);
 }
 
-/** The ready classes a review `K<n>` of this cadence covers: the first n * cadence of them. */
-function dueClasses(ready: ReadyClass[], n: number, cadence: number): ReadyClass[] {
-  return ready.slice(0, n * cadence);
+/** Review numbers `n` of the existing `K<n>` quizzes of a course (cheap: codes only). */
+export function existingCumulativeNumbers(db: DbOrTx, courseId: number): Set<number> {
+  const numbers = new Set<number>();
+  for (const row of db
+    .select({ code: quiz.code })
+    .from(quiz)
+    .where(eq(quiz.courseId, courseId))
+    .all()) {
+    const n = parseCumulativeCode(row.code);
+    if (n !== null) numbers.add(n);
+  }
+  return numbers;
 }
 
 /**
- * The course's cumulative review state (spec §11): `K<n>` is due once n * cadence classes have a
- * ready lesson and no quiz `K<n>` exists; the earliest missing `n` wins. Without a cadence nothing
- * is ever due (the student can still request one).
+ * The code a review that is still to come gets; never an existing one. With `after`: the smallest
+ * free `K<n>` with n above it; otherwise n is above every existing review. `atLeast` raises the floor.
+ */
+export function nextFreeCumulativeCode(
+  db: DbOrTx,
+  courseId: number,
+  opts: { after?: number; atLeast?: number } = {},
+): string {
+  const taken = existingCumulativeNumbers(db, courseId);
+  let n = Math.max(opts.atLeast ?? 1, (opts.after ?? Math.max(0, ...taken)) + 1);
+  while (taken.has(n)) n++;
+  return cumulativeCode(n);
+}
+
+/**
+ * The course's cumulative review state (spec §11). Coverage-based: `last` is the highest class
+ * number any existing review covers; with a cadence a review is due once at least `cadence` ready
+ * classes lie beyond it, whether earlier reviews were scheduled or requested by hand. It covers
+ * every ready class up to one cadence step past `last` (further steps follow as their own reviews)
+ * and gets the smallest unused `K<n>`. Without a cadence nothing is ever due (the student can still request one).
  */
 export function cumulativeStatus(db: DbOrTx, courseId: number): CumulativeStatus {
   const cadence =
@@ -115,15 +142,18 @@ export function cumulativeStatus(db: DbOrTx, courseId: number): CumulativeStatus
 
   let due: CumulativeStatus["due"] = null;
   if (cadence !== null && cadence >= 1) {
-    for (let n = 1; n * cadence <= ready.length; n++) {
-      if (taken.has(n)) continue;
-      const covered = dueClasses(ready, n, cadence);
+    const last = Math.max(0, ...existing.map((e) => e.coversThrough));
+    const coveredCount = ready.filter((c) => c.number <= last).length;
+    const uncovered = ready.length - coveredCount;
+    if (uncovered >= cadence) {
+      const covered = ready.slice(0, coveredCount + cadence);
+      let n = 1;
+      while (taken.has(n)) n++;
       due = {
         code: cumulativeCode(n),
         coversThrough: covered.at(-1)!.number,
         classNumbers: covered.map((c) => c.number),
       };
-      break;
     }
   }
   return {
@@ -200,11 +230,19 @@ export function cumulativeSchedule(db: Db, courseId: number): CumulativeSchedule
           .where(eq(result.submissionId, latest.id))
           .get()
       : undefined;
+    const gradingFailed = latest && !graded && gradingStateOf(db, latest.id).status === "failed";
     rows.set(n, {
       code: e.code,
       coversThrough: e.coversThrough,
-      status: graded ? "graded" : latest ? "submitted" : "available",
+      status: graded
+        ? "graded"
+        : gradingFailed
+          ? "grading_failed"
+          : latest
+            ? "submitted"
+            : "available",
       quizId: e.quizId,
+      submissionId: gradingFailed ? latest.id : null,
       submittedAt: latest?.submittedAt.toISOString() ?? null,
       totalScore: graded?.totalScore ?? null,
     });
@@ -237,6 +275,7 @@ export function cumulativeSchedule(db: Db, courseId: number): CumulativeSchedule
       coversThrough,
       status: "building",
       quizId: null,
+      submissionId: null,
       submittedAt: null,
       totalScore: null,
     });
@@ -249,6 +288,7 @@ export function cumulativeSchedule(db: Db, courseId: number): CumulativeSchedule
         coversThrough: status.due.coversThrough,
         status: "due",
         quizId: null,
+        submissionId: null,
         submittedAt: null,
         totalScore: null,
       });

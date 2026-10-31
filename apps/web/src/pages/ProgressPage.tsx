@@ -257,6 +257,7 @@ const CUMULATIVE_LABELS: Record<CumulativeScheduleStatus, string> = {
   building: "pravi se…",
   available: "spreman",
   submitted: "predat — ocenjivanje",
+  grading_failed: "ocenjivanje nije uspelo",
   graded: "ocenjen",
 };
 
@@ -304,6 +305,7 @@ function Cumulative({
 }
 
 function CumulativeItem({ entry }: { entry: CumulativeScheduleEntry }) {
+  const grade = useGradeSubmission();
   const code =
     entry.quizId === null ? (
       <strong>{entry.code}</strong>
@@ -327,10 +329,24 @@ function CumulativeItem({ entry }: { entry: CumulativeScheduleEntry }) {
         ) : (
           <span>{CUMULATIVE_LABELS[entry.status]}</span>
         )}
+        {entry.status === "grading_failed" && entry.submissionId !== null && (
+          <Button
+            variant="secondary"
+            onClick={() => grade.mutate(entry.submissionId!)}
+            disabled={grade.isPending}
+          >
+            Oceni ponovo
+          </Button>
+        )}
         {entry.status === "graded" && entry.totalScore !== null && (
           <strong>Ukupno: {formatDecimal(entry.totalScore)}</strong>
         )}
       </div>
+      {grade.isError && (
+        <p className={styles.error} role="alert">
+          {gradeErrorText(grade.error)}
+        </p>
+      )}
     </li>
   );
 }

@@ -187,6 +187,7 @@ export function useCourseProgress(courseId: number) {
     refetchInterval: (query) => {
       const data = query.state.data;
       if (!data) return false;
+      // A review whose grading failed (`grading_failed`) waits for the student; no polling for it.
       const busy =
         data.quizHistory.some((q) => q.gradingStatus === "running") ||
         data.cumulative.some((c) => c.status === "building" || c.status === "submitted");

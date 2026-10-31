@@ -335,8 +335,11 @@ describe("cumulative review branch", () => {
     expect(response.json()).toMatchObject({ quizCode: "K4", classId: classIds[2] });
     await waitFor(() => finished(1));
     expect(db().select().from(quiz).get()).toMatchObject({ code: "K4", classId: null });
-    // the due K1 is still due
-    expect((await status()).due?.code).toBe("K1");
+    // K4 covered classes 1..3, so nothing is due until two more classes are ready; then the
+    // smallest unused code, K1, is
+    expect((await status()).due).toBeNull();
+    addClasses(5);
+    expect((await status()).due).toMatchObject({ code: "K1", coversThrough: 5 });
   });
 
   it("shows the schedule: due, building, available, submitted, graded", async () => {
@@ -348,6 +351,7 @@ describe("cumulative review branch", () => {
         coversThrough: 2,
         status: "due",
         quizId: null,
+        submissionId: null,
         submittedAt: null,
         totalScore: null,
       },
@@ -362,6 +366,7 @@ describe("cumulative review branch", () => {
         coversThrough: 2,
         status: "available",
         quizId: released!.id,
+        submissionId: null,
         submittedAt: null,
         totalScore: null,
       },
@@ -386,6 +391,23 @@ describe("cumulative review branch", () => {
       status: "submitted",
       submittedAt: sub.submittedAt.toISOString(),
       totalScore: null,
+    });
+
+    db()
+      .insert(generationJob)
+      .values({
+        classId: classIds[0]!,
+        kind: "grading",
+        stage: "grader",
+        status: "failed",
+        attempt: 1,
+        submissionId: sub.id,
+        error: "API",
+      })
+      .run();
+    expect((await cumulative())[0]).toMatchObject({
+      status: "grading_failed",
+      submissionId: sub.id,
     });
 
     db()

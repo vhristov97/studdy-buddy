@@ -72,6 +72,7 @@ export const CumulativeScheduleStatus = z.enum([
   "building",
   "available",
   "submitted",
+  "grading_failed",
   "graded",
 ]);
 export type CumulativeScheduleStatus = z.infer<typeof CumulativeScheduleStatus>;
@@ -83,11 +84,14 @@ export const CumulativeScheduleEntry = z.object({
   coversThrough: z.number().int(),
   /**
    * `due`: offered but not built (or its last build failed); `building`: a build job is running;
-   * `available`: released, not taken; `submitted`: taken, not graded; `graded`: graded.
+   * `available`: released, not taken; `submitted`: taken, grading not finished;
+   * `grading_failed`: taken, the latest grading failed and there is no result; `graded`: graded.
    */
   status: CumulativeScheduleStatus,
   /** Null while `due` or `building`. */
   quizId: z.number().int().nullable(),
+  /** The submission to re-grade; set only while `grading_failed`. */
+  submissionId: z.number().int().nullable(),
   /** ISO 8601, of the latest submission; null when there is none. */
   submittedAt: z.string().nullable(),
   /** Of the latest graded submission; null until graded. */
