@@ -3,12 +3,28 @@ import path from "node:path";
 import { z } from "zod";
 import { REPO_ROOT } from "./paths.js";
 
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/**
+ * The Anthropic SDK appends `/v1/messages` to the base URL as a plain string, so a query or
+ * fragment would swallow the path. Plain `http:` would send the API key and study materials
+ * in cleartext, so it is only allowed for a loopback proxy.
+ */
+const baseUrlSchema = z
+  .string()
+  .url()
+  .refine((v) => !/[?#]/.test(v), "must not contain a query string or fragment")
+  .refine((v) => {
+    const { protocol, hostname } = new URL(v);
+    return protocol === "https:" || (protocol === "http:" && LOOPBACK_HOSTS.has(hostname));
+  }, "must use https (http is only allowed for localhost, 127.0.0.1 or [::1])");
+
 const envSchema = z.object({
   PORT: z.coerce.number().int().min(0).max(65535).default(3000),
   HOST: z.string().min(1).default("127.0.0.1"),
   DATA_DIR: z.string().min(1).default("./data"),
   ANTHROPIC_API_KEY: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
-  ANTHROPIC_BASE_URL: z.preprocess((v) => (v === "" ? undefined : v), z.string().url().optional()),
+  ANTHROPIC_BASE_URL: z.preprocess((v) => (v === "" ? undefined : v), baseUrlSchema.optional()),
   MODEL_PLANNER: z.string().min(1).default("claude-opus-5-5"),
   MODEL_BUILDER: z.string().min(1).default("claude-sonnet-5-5"),
 });

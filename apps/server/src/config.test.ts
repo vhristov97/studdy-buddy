@@ -46,6 +46,29 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ ANTHROPIC_BASE_URL: "not a url" })).toThrow();
   });
 
+  it("rejects an ANTHROPIC_BASE_URL with a query", () => {
+    expect(() => loadConfig({ ANTHROPIC_BASE_URL: "https://gw.example.com/a?x=y" })).toThrow();
+    expect(() => loadConfig({ ANTHROPIC_BASE_URL: "https://gw.example.com/a?" })).toThrow();
+  });
+
+  it("rejects an ANTHROPIC_BASE_URL with a fragment", () => {
+    expect(() => loadConfig({ ANTHROPIC_BASE_URL: "https://gw.example.com/a#x" })).toThrow();
+  });
+
+  it("rejects an http ANTHROPIC_BASE_URL on a remote host", () => {
+    expect(() => loadConfig({ ANTHROPIC_BASE_URL: "http://gw.example.com/anthropic" })).toThrow();
+  });
+
+  it("accepts an http ANTHROPIC_BASE_URL on a loopback host", () => {
+    for (const url of [
+      "http://localhost:8080",
+      "http://127.0.0.1:4000/anthropic",
+      "http://[::1]:4000",
+    ]) {
+      expect(loadConfig({ ANTHROPIC_BASE_URL: url }).ANTHROPIC_BASE_URL).toBe(url);
+    }
+  });
+
   it("returns a frozen object", () => {
     expect(Object.isFrozen(loadConfig({}))).toBe(true);
   });
