@@ -3,6 +3,7 @@ export const APP_NAME = "studdy-buddy";
 export * from "./api/courses";
 export * from "./api/lessons";
 export * from "./api/materials";
+export * from "./api/progress";
 export * from "./api/quizzes";
 export * from "./api/submissions";
 export * from "./agents/lesson";

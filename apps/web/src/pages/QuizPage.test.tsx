@@ -93,6 +93,7 @@ const submissionSummary = (over: Partial<SubmissionSummary> = {}): SubmissionSum
   openPending: 1,
   dontKnow: [],
   submittedAt: new Date(2026, 0, 3, 14, 5).toISOString(),
+  gradingStatus: "none",
   ...over,
 });
 
@@ -134,6 +135,7 @@ const detail = (over: Partial<SubmissionDetail> = {}): SubmissionDetail => ({
       { id: "q6", type: "open", keyPoints: ["Šablon za kontejner"] },
     ],
   },
+  grading: { status: "none", error: null, result: null },
   ...over,
 });
 

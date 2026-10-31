@@ -1,7 +1,16 @@
-import { asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import type { LessonView, Quiz, QuizPlan, QuestionResult, SubmissionAnswers } from "@studdy/shared";
 import type { Db } from "../db/client.js";
-import { classTable, course, quizPlan, submission } from "../db/schema.js";
+import {
+  backlogItem,
+  classTable,
+  course,
+  learnerObservation,
+  nextStep,
+  quizPlan,
+  submission,
+  topic,
+} from "../db/schema.js";
 import { getLessonView } from "../repositories/lessons.js";
 import { getFullQuiz } from "../repositories/quizzes.js";
 import { toTopicInput, type BacklogItem, type QuizTopicInput } from "../quiz/context.js";
@@ -44,25 +53,47 @@ export interface GradingContext {
   leftOutTopics: (GradingTopic & { reason: string })[];
   /** The cumulative quiz that follows this class, "K<n>"; "K1" when the course has no cadence. */
   nextCumulativeCode: string;
-  /** Cross-course observations about the student. Empty until the table exists (M6.2). */
+  /** Cross-course observations about the student, oldest first (the newest {@link MAX_OBSERVATIONS}). */
   observations: string[];
-  /** Topics already on the backlog. Empty until the table exists (M6.2). */
+  /** The course's unresolved backlog items. */
   backlog: BacklogItem[];
-  /** The current "Sledeće" list. Empty until the table exists (M6.2). */
+  /** The course's current "Sledeće" list, in order. */
   nextSteps: string[];
 }
 
-// M6.2 fills these three in from their tables (they will take `db` and the course id then).
-function loadObservations(): string[] {
-  return [];
+/** How many observations the grader sees. */
+export const MAX_OBSERVATIONS = 50;
+
+/** Observations are shared across courses; the newest {@link MAX_OBSERVATIONS}, oldest first. */
+export function loadObservations(db: Db): string[] {
+  return db
+    .select({ text: learnerObservation.text })
+    .from(learnerObservation)
+    .orderBy(desc(learnerObservation.id))
+    .limit(MAX_OBSERVATIONS)
+    .all()
+    .map((r) => r.text)
+    .reverse();
 }
 
-function loadBacklog(): BacklogItem[] {
-  return [];
+export function loadBacklog(db: Db, courseId: number): BacklogItem[] {
+  return db
+    .select({ topic: topic.name, dueQuiz: backlogItem.dueQuiz, reason: backlogItem.reason })
+    .from(backlogItem)
+    .innerJoin(topic, eq(topic.id, backlogItem.topicId))
+    .where(and(eq(backlogItem.courseId, courseId), isNull(backlogItem.resolvedAt)))
+    .orderBy(asc(backlogItem.id))
+    .all();
 }
 
-function loadNextSteps(): string[] {
-  return [];
+export function loadNextSteps(db: Db, courseId: number): string[] {
+  return db
+    .select({ text: nextStep.text })
+    .from(nextStep)
+    .where(eq(nextStep.courseId, courseId))
+    .orderBy(asc(nextStep.position), asc(nextStep.id))
+    .all()
+    .map((r) => r.text);
 }
 
 /** "K<n>" with n = ceil(classNumber / cadence), or "K1" when the course has no cadence. */
@@ -202,8 +233,8 @@ export function loadGradingContext(db: Db, submissionId: number): GradingContext
     questionTopics,
     leftOutTopics,
     nextCumulativeCode: nextCumulativeCode(classNumber, courseRow.reviewCadence),
-    observations: loadObservations(),
-    backlog: loadBacklog(),
-    nextSteps: loadNextSteps(),
+    observations: loadObservations(db),
+    backlog: loadBacklog(db, courseRow.id),
+    nextSteps: loadNextSteps(db, courseRow.id),
   };
 }

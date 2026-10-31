@@ -75,7 +75,7 @@ type Value = unknown;
 
 const has = (answers: object, key: string): boolean => Object.hasOwn(answers, key);
 
-function answerOf(ctx: GradingContext, id: string): Value {
+export function answerOf(ctx: GradingContext, id: string): Value {
   return has(ctx.submission.answers, id) ? ctx.submission.answers[id] : undefined;
 }
 

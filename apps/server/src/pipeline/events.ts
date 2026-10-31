@@ -10,8 +10,12 @@ export const DOMAIN_EVENTS = {
   QUIZ_REQUESTED: "quiz.requested",
   /** Payload `QuizReleasedPayload`: the quiz passed review and is in the library. */
   QUIZ_RELEASED: "quiz.released",
-  /** Payload `SubmissionCreatedPayload`: a quiz submission was saved; grading (M6) reacts to it. */
+  /** Payload `SubmissionCreatedPayload`: a quiz submission was saved; the grading branch reacts to it. */
   SUBMISSION_CREATED: "submission.created",
+  /** Payload `GradingRequestedPayload`: starts the grader for a grading job. */
+  GRADING_REQUESTED: "grading.requested",
+  /** Payload `GradingDonePayload`: the grading result is persisted. */
+  GRADING_DONE: "grading.done",
   /** Payload: `PipelineEvent` of type `job`. Feeds the SSE stream. */
   JOB_UPDATED: "job.updated",
   /** Payload: `PipelineEvent` of type `progress`. Feeds the SSE stream. */
@@ -42,6 +46,17 @@ export interface QuizReleasedPayload {
 export interface SubmissionCreatedPayload {
   quizId: number;
   submissionId: number;
+}
+
+export interface GradingRequestedPayload {
+  classId: number;
+  jobId: number;
+  submissionId: number;
+}
+
+export interface GradingDonePayload {
+  submissionId: number;
+  resultId: number;
 }
 
 export type JobUpdatedPayload = Extract<PipelineEvent, { type: "job" }>;
