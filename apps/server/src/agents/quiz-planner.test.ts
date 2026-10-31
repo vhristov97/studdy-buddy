@@ -360,6 +360,36 @@ describe("quizPlanSchema", () => {
       expect(issuesOf(planFixture())).toBe("");
     });
 
+    it("does not count an open question as coverage and rejects the target on it", () => {
+      const plan = mutated((p) => {
+        p.questions[0]!.targetsMisconception = null;
+        p.questions[6]!.topic = "Batch obrada"; // q7 is open
+        p.questions[6]!.targetsMisconception = MISCONCEPTION;
+      });
+      const issues = issuesOf(plan);
+      expect(issues).toContain("open questions have no distractors");
+      expect(issues).toContain(`Topic "Batch obrada"`);
+      expect(issues).toContain(JSON.stringify(MISCONCEPTION));
+    });
+
+    it("does not count a num question as coverage", () => {
+      const plan = mutated((p) => {
+        p.questions[0]!.targetsMisconception = null;
+        p.questions[3]!.topic = "Batch obrada"; // q4 is num
+        p.questions[3]!.targetsMisconception = MISCONCEPTION;
+      });
+      expect(issuesOf(plan)).toContain(`Topic "Batch obrada"`);
+    });
+
+    it("accepts an mc question on the right topic as coverage", () => {
+      const plan = mutated((p) => {
+        p.questions[0]!.targetsMisconception = null;
+        p.questions[1]!.topic = "Batch obrada"; // q2 is mc
+        p.questions[1]!.targetsMisconception = MISCONCEPTION;
+      });
+      expect(issuesOf(plan)).toBe("");
+    });
+
     it("does not accept a targeted text that matches no misconception", () => {
       const plan = mutated((p) => void (p.questions[0]!.targetsMisconception = "Nešto drugo"));
       expect(issuesOf(plan)).toContain(JSON.stringify(MISCONCEPTION));

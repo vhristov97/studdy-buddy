@@ -4,12 +4,17 @@
 # Emits: "NEW <inline|issue|review> id=… reply_to=… path=… :: <body excerpt>" for each new Devin item,
 #        "EDITED <inline|issue> id=… reply_to=… path=… :: <body excerpt>" when a known inline/issue comment is
 #        edited in place later (its updated_at changed; reviews have no updated_at, so they are id-only),
+#        "UNRESOLVED <inline|issue> id=… reply_to=… path=… :: <body excerpt>" instead of NEW/EDITED when the item
+#        is Devin's "The fix didn't resolve this Devin Review issue" reply (new or edited; the issue-comment
+#        variant continues ": <issue title> (<path>:<lines>)"),
 #        "RESOLVED: …" once Devin posts "All Devin Review issues are resolved.",
 #        "PR closed/merged" and exits when the PR is closed.
 set -u
 PR="${1:?usage: watch-pr.sh <pr-number>}"
 R="repos/$(gh repo view --json nameWithOwner --jq .nameWithOwner)"
 PHRASE="All Devin Review issues are resolved"
+# Devin's reply when a fix did not resolve its issue; the apostrophe may be straight or curly.
+UNRESOLVED_GLOB="The fix didn?t resolve this Devin Review issue*"
 
 # seen: one "<kind>:<id><TAB><updated_at>" record per line (updated_at is "-" for reviews). Records are only
 # ever appended and the last one for a key wins, so a failed poll can never wipe or corrupt the state.
@@ -31,11 +36,17 @@ while true; do
     [ -z "$id" ] && continue
     key="$kind:$id"
     prev=$(awk -F'\t' -v k="$key" '$1==k{v=$2; f=1} END{if(f)print v}' <<<"$seen")
+    label=""
     if [ -z "$prev" ]; then
-      echo "NEW $kind id=$id reply_to=$rep path=$path :: $body"
-      seen=$(printf '%s\n%s\t%s' "$seen" "$key" "$upd")
+      label="NEW"
     elif [ "$prev" != "$upd" ] && [ "$upd" != "-" ]; then
-      echo "EDITED $kind id=$id reply_to=$rep path=$path :: $body"
+      label="EDITED"
+    fi
+    if [ -n "$label" ]; then
+      trimmed="${body#"${body%%[![:space:]]*}"}"
+      # shellcheck disable=SC2254
+      case "$trimmed" in $UNRESOLVED_GLOB) label="UNRESOLVED" ;; esac
+      echo "$label $kind id=$id reply_to=$rep path=$path :: $body"
       seen=$(printf '%s\n%s\t%s' "$seen" "$key" "$upd")
     fi
   done <<<"$all"
