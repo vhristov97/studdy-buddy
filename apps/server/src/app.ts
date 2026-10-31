@@ -14,6 +14,7 @@ import { materialRoutes } from "./routes/materials.js";
 import { progressRoutes } from "./routes/progress.js";
 import { quizRoutes } from "./routes/quizzes.js";
 import { submissionRoutes } from "./routes/submissions.js";
+import { vizRoutes } from "./routes/viz.js";
 import type { Pipeline } from "./pipeline/pipeline.js";
 
 export interface AppDeps {
@@ -46,6 +47,7 @@ export function buildApp({
   app.register(quizRoutes, { db });
   app.register(progressRoutes, { db });
   app.register(submissionRoutes, { db, ...(coordinator && { coordinator }) });
+  app.register(vizRoutes, { db, ...(coordinator && { coordinator }) });
   app.register(generationRoutes, {
     db,
     ...(pipeline && { pipeline }),

@@ -5,13 +5,15 @@ export const JOB_KIND_LABELS: Record<JobKind, string> = {
   lesson: "Objedinjene beleške",
   quiz: "Kviz",
   grading: "Ocenjivanje",
+  viz_topics: "Predlozi vizualizacija",
 };
 
-/** Pipeline position of each kind; the panel lists its rows in this order. M7 adds the viz kinds. */
-export const JOB_KIND_ORDER: readonly JobKind[] = ["lesson", "quiz", "grading"];
+/** Pipeline position of each kind; the panel lists its rows in this order. M7.2 adds the viz kind. */
+export const JOB_KIND_ORDER: readonly JobKind[] = ["lesson", "quiz", "grading", "viz_topics"];
 
 /** Step label per stage name, given the review cycle of the job. M7 adds the viz stages. */
 const STAGE_LABELS: Record<string, (cycle: number | null) => string> = {
+  "viz-identifier": () => "Traženje tema",
   "quiz-planner": () => "Planiranje",
   "quiz-builder": (cycle) => (cycle === null ? "Izrada" : `Ispravke (krug ${cycle})`),
   "quiz-reviewer": (cycle) => `Provera (krug ${cycle ?? 1})`,

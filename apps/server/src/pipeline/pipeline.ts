@@ -25,6 +25,7 @@ import { notFound } from "../routes/errors.js";
 import { createJobEmitter, createProgressReporter, truncate } from "./common.js";
 import { registerGradingBranch } from "./grading-branch.js";
 import { registerQuizBranch, type QuizAgents } from "./quiz-branch.js";
+import { registerVizBranch, type VizAgents } from "./viz-branch.js";
 import { DOMAIN_EVENTS, type GenerateRequestedPayload, type LessonReadyPayload } from "./events.js";
 
 export type WriteLesson = (
@@ -46,6 +47,10 @@ export interface PipelineOptions {
   gradeSubmission?: typeof realGradeSubmission;
   /** Off: no grading job starts on `submission.created`. Default on. */
   gradingAutoStart?: boolean;
+  /** Replaceable in tests: the viz-topic identifier of the viz branch. */
+  vizAgents?: Partial<VizAgents>;
+  /** Off: no `viz_topics` job starts on `lesson.ready`. Default on. */
+  vizAutoStart?: boolean;
   /** Minimum gap between two progress events of a job. */
   progressIntervalMs?: number;
 }
@@ -64,6 +69,10 @@ export interface Pipeline {
    * Throws 404/409 `ApiError`s.
    */
   requestGrading(submissionId: number): GenerationJob;
+   * Reruns the viz-topic identifier of a `ready` class whose latest `viz_topics` job failed or is
+   * absent (classes generated before M7). Throws 404/409 `ApiError`s.
+   */
+  requestVizTopicsRegeneration(classId: number): GenerationJob;
   /**
    * For startup: no job survives a restart, so mark running jobs and generating classes failed.
    * A `ready` class stays `ready` when only its quiz job was running.
@@ -93,6 +102,8 @@ export function createPipeline({
   quizAutoStart = true,
   gradeSubmission,
   gradingAutoStart = true,
+  vizAgents,
+  vizAutoStart = true,
   progressIntervalMs = 500,
 }: PipelineOptions): Pipeline {
   const emitJob = createJobEmitter(db, coordinator);
@@ -292,6 +303,14 @@ export function createPipeline({
     progressIntervalMs,
     autoStart: gradingAutoStart,
   });
+  const vizBranch = registerVizBranch({
+    db,
+    coordinator,
+    logger,
+    ...(vizAgents && { agents: vizAgents }),
+    progressIntervalMs,
+    autoStart: vizAutoStart,
+  });
 
   function recoverInterruptedJobs(): void {
     db.transaction((tx) => {
@@ -310,6 +329,7 @@ export function createPipeline({
     requestGeneration,
     requestQuizRegeneration: quizBranch.requestRegeneration,
     requestGrading: gradingBranch.requestRegrade,
+    requestVizTopicsRegeneration: vizBranch.requestTopicsRegeneration,
     recoverInterruptedJobs,
   };
 }

@@ -85,7 +85,7 @@ describe("generation routes (real lesson writer, fake model)", () => {
   }
 
   beforeEach(() => {
-    t = createTestApp({ pipeline: { quizAutoStart: false } });
+    t = createTestApp({ pipeline: { quizAutoStart: false, vizAutoStart: false } });
   });
   afterEach(async () => {
     await t.cleanup();
@@ -170,6 +170,7 @@ describe("event stream", () => {
       pipeline: {
         writeLesson: () => new Promise<LessonDraft>((resolve) => (release = resolve)),
         quizAutoStart: false,
+        vizAutoStart: false,
       },
     });
     const courseId = t.handle.db
