@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import {
   CreateVizSuggestionInput,
   SelectVizSuggestionsInput,
+  type VisualizationSummary,
   type VizSuggestion,
 } from "@studdy/shared";
 import type { Coordinator } from "../agents/coordinator.js";
@@ -10,6 +11,7 @@ import { DOMAIN_EVENTS, type VizSelectedPayload } from "../pipeline/events.js";
 import { getClassStatus } from "../repositories/lessons.js";
 import {
   addUserVizSuggestion,
+  listVisualizations,
   listVizSuggestions,
   selectVizSuggestions,
 } from "../repositories/viz.js";
@@ -36,6 +38,12 @@ export const vizRoutes: FastifyPluginAsync<VizRouteOptions> = async (app, { db, 
     "/api/classes/:classId/viz-suggestions",
     async (request): Promise<VizSuggestion[]> =>
       listVizSuggestions(db, requireClass(request.params.classId)),
+  );
+
+  app.get<{ Params: ClassParams }>(
+    "/api/classes/:classId/visualizations",
+    async (request): Promise<VisualizationSummary[]> =>
+      listVisualizations(db, requireClass(request.params.classId)),
   );
 
   app.post<{ Params: ClassParams }>(

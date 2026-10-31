@@ -2,11 +2,22 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { SemanticEvent } from "@mozaik-ai/core";
-import { ApiErrorBody, GenerationJob, VizSuggestion } from "@studdy/shared";
+import {
+  ApiErrorBody,
+  GenerationJob,
+  VisualizationSummary,
+  VizSuggestion,
+  type VizDraft,
+} from "@studdy/shared";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { initAgentRuntime } from "../agents/runtime.js";
-import { StageError } from "../agents/stage.js";
+import { StageError, type StageSession } from "../agents/stage.js";
 import { FakeRunner } from "../agents/testing/fake-runner.js";
+import {
+  VIZ_APPROVED,
+  vizDraftFixture,
+  vizPlanFixture,
+} from "../agents/testing/viz-build-fixtures.js";
 import { vizSuggestionsFixture } from "../agents/testing/viz-fixtures.js";
 import { classTable, course, lesson, vizSuggestion } from "../db/schema.js";
 import { DOMAIN_EVENTS } from "../pipeline/events.js";
@@ -39,6 +50,7 @@ describe("viz routes", () => {
   let courseId: number;
   let classId: number;
   let identify: ReturnType<typeof vi.fn<VizAgents["identifyVizTopics"]>>;
+  let plan: ReturnType<typeof vi.fn<VizAgents["planViz"]>>;
   let events: SemanticEvent[];
 
   const url = (suffix: string, id = classId) => `/api/classes/${id}/${suffix}`;
@@ -67,11 +79,21 @@ describe("viz routes", () => {
 
   beforeEach(() => {
     identify = vi.fn<VizAgents["identifyVizTopics"]>(async () => vizSuggestionsFixture());
+    plan = vi.fn<VizAgents["planViz"]>(async () => vizPlanFixture());
     t = createTestApp({
       pipeline: {
         quizAutoStart: false,
         vizAutoStart: false,
-        vizAgents: { identifyVizTopics: identify },
+        vizAgents: {
+          identifyVizTopics: identify,
+          planViz: plan,
+          openVizBuilderSession: () =>
+            ({
+              send: async () => vizDraftFixture(),
+              close: () => {},
+            }) as unknown as StageSession<VizDraft>,
+          reviewViz: async () => VIZ_APPROVED,
+        },
       },
     });
     events = [];
@@ -253,6 +275,76 @@ describe("viz routes", () => {
       const res = await post("viz-topics/regenerate");
       expect(res.statusCode).toBe(202);
       expect(GenerationJob.parse(res.json()).attempt).toBe(2);
+    });
+  });
+  describe("visualizations", () => {
+    let ids: number[];
+    const listViz = async (id = classId) => {
+      const res = await t.app.inject({ method: "GET", url: url("visualizations", id) });
+      expect(res.statusCode).toBe(200);
+      return VisualizationSummary.array().parse(res.json());
+    };
+    const jobs = async () =>
+      (
+        (await t.app.inject({ method: "GET", url: url("jobs") })).json() as {
+          jobs: { kind: string; status: string; suggestionId: number | null }[];
+        }
+      ).jobs.filter((j) => j.kind === "viz");
+
+    beforeEach(async () => {
+      await post("viz-topics/regenerate");
+      await waitFor(async () => (await list()).length === 2);
+      ids = (await list()).map((s) => s.id);
+    });
+
+    it("lists nothing at first and 404s for an unknown class", async () => {
+      expect(await listViz()).toEqual([]);
+      const res = await t.app.inject({ method: "GET", url: url("visualizations", 999) });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it("builds the selected suggestions and lists the visualizations without their HTML", async () => {
+      plan.mockImplementation(async ({ suggestion }) =>
+        vizPlanFixture({ slug: suggestion.concept === "Lambda u pokretu" ? "lambda" : "sharding" }),
+      );
+      expect((await post("viz-suggestions/select", { ids })).statusCode).toBe(200);
+      await waitFor(async () => (await listViz()).length === 2);
+
+      const res = await t.app.inject({ method: "GET", url: url("visualizations") });
+      const body = res.json() as Record<string, unknown>[];
+      expect(body.every((v) => !("html" in v))).toBe(true);
+      const all = VisualizationSummary.array().parse(body);
+      expect(all.map((v) => [v.suggestionId, v.slug, v.title])).toEqual([
+        [ids[0], "sharding", "Sharding pod lupom"],
+        [ids[1], "lambda", "Sharding pod lupom"],
+      ]);
+      expect(new Set((await jobs()).map((j) => j.suggestionId))).toEqual(new Set(ids));
+      expect(events.filter((e) => e.type === DOMAIN_EVENTS.VIZ_RELEASED)).toHaveLength(2);
+    });
+
+    it("regenerates a failed visualization through the API", async () => {
+      plan.mockRejectedValueOnce(new StageError("failed", "api down"));
+      await post("viz-suggestions/select", { ids: [ids[0]!] });
+      await waitFor(async () => (await jobs())[0]?.status === "failed");
+
+      const regen = (id: number | string) =>
+        t.app.inject({ method: "POST", url: `/api/viz-suggestions/${id}/regenerate` });
+      expect((await regen(ids[1]!)).statusCode).toBe(409); // not selected
+      expect((await regen(9999)).statusCode).toBe(404);
+      expect((await regen("abc")).statusCode).toBe(400);
+
+      const res = await regen(ids[0]!);
+      expect(res.statusCode).toBe(202);
+      expect(GenerationJob.parse(res.json())).toMatchObject({
+        kind: "viz",
+        status: "running",
+        attempt: 2,
+        suggestionId: ids[0],
+      });
+      await waitFor(async () => (await listViz()).length === 1);
+      const again = await regen(ids[0]!);
+      expect(again.statusCode).toBe(409);
+      expect(ApiErrorBody.parse(again.json()).error.code).toBe("conflict");
     });
   });
 });

@@ -14,3 +14,5 @@ export * from "./quiz/validate";
 export * from "./quiz/public";
 export * from "./quiz/scoring";
 export * from "./viz/suggestion";
+export * from "./viz/plan";
+export * from "./viz/build";

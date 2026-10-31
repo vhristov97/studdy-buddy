@@ -40,3 +40,16 @@ export const SelectVizSuggestionsInput = z.strictObject({
   ids: z.array(z.number().int().positive()).min(1).max(100),
 });
 export type SelectVizSuggestionsInput = z.infer<typeof SelectVizSuggestionsInput>;
+
+/** A released visualization; the page itself is served separately (never inlined in lists). */
+export const VisualizationSummary = z.object({
+  id: z.number().int(),
+  classId: z.number().int(),
+  /** Null when the suggestion was deleted. */
+  suggestionId: z.number().int().nullable(),
+  slug: z.string(),
+  title: z.string(),
+  /** ISO 8601. */
+  createdAt: z.string(),
+});
+export type VisualizationSummary = z.infer<typeof VisualizationSummary>;

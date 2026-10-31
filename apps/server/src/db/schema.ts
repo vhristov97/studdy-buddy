@@ -24,6 +24,9 @@ import {
   type Question,
   type QuestionResult,
   type SubmissionAnswers,
+  type VizPlan,
+  type VizReport,
+  type VizReview,
 } from "@studdy/shared";
 
 /** Placeholder table; real tables arrive in later tasks. */
@@ -106,8 +109,12 @@ export const generationJob = sqliteTable(
     /** 1 for the first run, +1 per retry after a failure. */
     attempt: integer("attempt").notNull(),
     error: text("error"),
-    /** Review cycle (from 1) of a quiz job; null otherwise. */
+    /** Review cycle (from 1) of a quiz or viz job; null otherwise. */
     cycle: integer("cycle"),
+    /** The suggestion a `viz` job builds. */
+    suggestionId: integer("suggestion_id").references((): AnySQLiteColumn => vizSuggestion.id, {
+      onDelete: "set null",
+    }),
     /** The failed job this one retries. */
     parentJobId: integer("parent_job_id").references((): AnySQLiteColumn => generationJob.id, {
       onDelete: "set null",
@@ -266,3 +273,56 @@ export const vizSuggestion = sqliteTable(
   },
   (table) => [index("viz_suggestion_class_id_idx").on(table.classId)],
 );
+
+/** A released visualization: one self-contained HTML page. Immutable once inserted. */
+export const visualization = sqliteTable(
+  "visualization",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    classId: integer("class_id")
+      .notNull()
+      .references(() => classTable.id, { onDelete: "cascade" }),
+    suggestionId: integer("suggestion_id").references(() => vizSuggestion.id, {
+      onDelete: "set null",
+    }),
+    /** Unique per class; the plan's slug, with `-2`, `-3` appended on a collision. */
+    slug: text("slug").notNull(),
+    title: text("title").notNull(),
+    html: text("html").notNull(),
+    jobId: integer("job_id").references(() => generationJob.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("visualization_class_id_slug_unique").on(table.classId, table.slug),
+    index("visualization_suggestion_id_idx").on(table.suggestionId),
+  ],
+);
+
+/** One entry per review cycle of a viz job. */
+export interface VizBuildLogEntry {
+  cycle: number;
+  report: VizReport;
+  /** Null while the review runs, or when it failed. */
+  review: VizReview | null;
+  notes: string[];
+}
+
+/** The planner's plan and the build/review history of a viz job. Never exposed by any route. */
+export const vizBuild = sqliteTable("viz_build", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  jobId: integer("job_id")
+    .notNull()
+    .unique()
+    .references(() => generationJob.id, { onDelete: "cascade" }),
+  suggestionId: integer("suggestion_id")
+    .notNull()
+    .references(() => vizSuggestion.id, { onDelete: "cascade" }),
+  planJson: text("plan_json", { mode: "json" }).$type<VizPlan>().notNull(),
+  /** The latest builder draft's HTML. */
+  draftHtml: text("draft_html"),
+  logJson: text("log_json", { mode: "json" }).$type<VizBuildLogEntry[]>().notNull(),
+  visualizationId: integer("visualization_id").references(() => visualization.id, {
+    onDelete: "set null",
+  }),
+  createdAt: createdAt(),
+});

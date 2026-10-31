@@ -41,7 +41,7 @@ export interface PipelineOptions {
   quizAgents?: Partial<QuizAgents>;
   /** Off: no quiz job starts on `lesson.ready` (lesson-only tests). Default on. */
   quizAutoStart?: boolean;
-  /** Replaceable in tests: the viz-topic identifier of the viz branch. */
+  /** Replaceable in tests: the agents of the viz branch (identifier, planner, builder session, reviewer). */
   vizAgents?: Partial<VizAgents>;
   /** Off: no `viz_topics` job starts on `lesson.ready`. Default on. */
   vizAutoStart?: boolean;
@@ -63,6 +63,11 @@ export interface Pipeline {
    * absent (classes generated before M7). Throws 404/409 `ApiError`s.
    */
   requestVizTopicsRegeneration(classId: number): GenerationJob;
+  /**
+   * Rebuilds a selected visualization suggestion from scratch (re-plan + re-build) when it has no
+   * released visualization and its latest `viz` job failed. Throws 404/409 `ApiError`s.
+   */
+  requestVizRegeneration(suggestionId: number): GenerationJob;
   /**
    * For startup: no job survives a restart, so mark running jobs and generating classes failed.
    * A `ready` class stays `ready` when only its quiz job was running.
@@ -309,6 +314,7 @@ export function createPipeline({
     requestGeneration,
     requestQuizRegeneration: quizBranch.requestRegeneration,
     requestVizTopicsRegeneration: vizBranch.requestTopicsRegeneration,
+    requestVizRegeneration: vizBranch.requestVizRegeneration,
     recoverInterruptedJobs,
   };
 }
