@@ -1,0 +1,16 @@
+.empty {
+  padding: var(--space-5) var(--space-4);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-surface);
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.message {
+  margin: 0 0 var(--space-3);
+}
+
+.message:last-child {
+  margin-bottom: 0;
+}

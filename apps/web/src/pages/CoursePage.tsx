@@ -1,0 +1,145 @@
+import { useState } from "react";
+import { Link, useNavigate, useParams } from "react-router";
+import type { ClassSummary, CourseDetail } from "@studdy/shared";
+import { ApiError } from "../api/client";
+import { useCourse, useCreateClass, useDeleteCourse, useUpdateCourse } from "../api/hooks";
+import { StatusBadge } from "../components/Badge";
+import { Breadcrumbs } from "../components/Breadcrumbs";
+import { Button } from "../components/Button";
+import { ClassForm } from "../components/ClassForm";
+import { ConfirmDialog, Dialog } from "../components/Dialog";
+import { CourseForm } from "../components/CourseForm";
+import { EmptyState } from "../components/EmptyState";
+import { QueryBoundary } from "../components/QueryBoundary";
+import { cadenceLabel, countMaterials, countNotes, formatClassNumber } from "../lib/format";
+import styles from "./CoursePage.module.css";
+
+export function CoursePage() {
+  const courseId = Number(useParams().courseId);
+  const query = useCourse(courseId);
+  return (
+    <QueryBoundary query={query} backTo="/" backLabel="Nazad na kurseve">
+      {(course) => <CourseView course={course} />}
+    </QueryBoundary>
+  );
+}
+
+function CourseView({ course }: { course: CourseDetail }) {
+  const navigate = useNavigate();
+  const updateCourse = useUpdateCourse(course.id);
+  const deleteCourse = useDeleteCourse(course.id);
+  const createClass = useCreateClass(course.id);
+  const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const nextNumber = course.classes.reduce((max, item) => Math.max(max, item.number), 0) + 1;
+
+  return (
+    <>
+      <Breadcrumbs items={[{ label: "Kursevi", to: "/" }, { label: course.name }]} />
+
+      <header className={styles.header}>
+        <h1 className={styles.title}>{course.name}</h1>
+        <div className={styles.actions}>
+          <Button onClick={() => setEditing(true)}>Izmeni kurs</Button>
+          <Button variant="danger" onClick={() => setDeleting(true)}>
+            Obriši kurs
+          </Button>
+        </div>
+      </header>
+
+      {(course.persona || course.assessmentFormat || course.reviewCadence) && (
+        <dl className={styles.details}>
+          {course.persona && (
+            <div>
+              <dt>Uloga tutora</dt>
+              <dd>{course.persona}</dd>
+            </div>
+          )}
+          {course.assessmentFormat && (
+            <div>
+              <dt>Format ispita</dt>
+              <dd>{course.assessmentFormat}</dd>
+            </div>
+          )}
+          {course.reviewCadence && (
+            <div>
+              <dt>Kumulativni test</dt>
+              <dd>{cadenceLabel(course.reviewCadence)}</dd>
+            </div>
+          )}
+        </dl>
+      )}
+
+      <h2>Predavanja</h2>
+      <ClassList classes={course.classes} />
+
+      <h2 className={styles.addHeading}>Dodaj predavanje</h2>
+      <ClassForm
+        inline
+        resetOnSuccess
+        submitLabel="Dodaj predavanje"
+        suggestedNumber={nextNumber}
+        onSubmit={(input) => createClass.mutateAsync(input)}
+      />
+
+      <Dialog open={editing} onClose={() => setEditing(false)} title="Izmeni kurs">
+        <CourseForm
+          initial={course}
+          submitLabel="Sačuvaj"
+          onCancel={() => setEditing(false)}
+          onSubmit={async (input) => {
+            await updateCourse.mutateAsync(input);
+            setEditing(false);
+          }}
+        />
+      </Dialog>
+
+      <ConfirmDialog
+        open={deleting}
+        title="Obriši kurs"
+        confirmLabel="Obriši kurs"
+        pending={deleteCourse.isPending}
+        error={
+          deleteCourse.isError
+            ? deleteCourse.error instanceof ApiError
+              ? deleteCourse.error.message
+              : "Brisanje nije uspelo."
+            : null
+        }
+        onClose={() => {
+          setDeleting(false);
+          deleteCourse.reset();
+        }}
+        onConfirm={() => deleteCourse.mutate(undefined, { onSuccess: () => void navigate("/") })}
+      >
+        <p>
+          Obrisati kurs <strong>{course.name}</strong>?
+        </p>
+        <p>Sva predavanja i materijali ovog kursa biće obrisani. Ovo se ne može poništiti.</p>
+      </ConfirmDialog>
+    </>
+  );
+}
+
+function ClassList({ classes }: { classes: ClassSummary[] }) {
+  if (classes.length === 0) return <EmptyState message="Još nema predavanja." />;
+
+  return (
+    <ul className={styles.classes}>
+      {classes.map((item) => (
+        <li key={item.id} className={styles.classItem}>
+          <div className={styles.classMain}>
+            <Link to={`/predavanja/${item.id}`} className={styles.classLink}>
+              {formatClassNumber(item.number)} — {item.title}
+            </Link>
+            <span className={styles.counts}>
+              {countMaterials(item.materialCount)} · {countNotes(item.noteCount)}
+            </span>
+          </div>
+          <StatusBadge status={item.status} />
+        </li>
+      ))}
+    </ul>
+  );
+}

@@ -1,10 +1,74 @@
-.empty {
-  padding: var(--space-5);
-  border: 1px dashed var(--color-border);
+.heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.heading h1 {
+  margin: 0;
+}
+
+.list {
+  list-style: none;
+  margin: 0 0 var(--space-5);
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+  gap: var(--space-3);
+}
+
+.card {
+  position: relative;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background-color: var(--color-surface);
+  transition: border-color var(--transition);
+}
+
+.card:hover,
+.card:focus-within {
+  border-color: var(--color-accent);
+}
+
+.cardTitle {
+  font-size: var(--font-size-lg);
+  margin-bottom: var(--space-1);
+  overflow-wrap: anywhere;
+}
+
+/* The whole card is clickable through the heading link. */
+.cardLink {
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.cardLink::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.meta {
+  margin: 0;
   color: var(--color-text-muted);
-  text-align: center;
+  font-size: var(--font-size-sm);
+}
+
+.persona {
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-style: italic;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .status {

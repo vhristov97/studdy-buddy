@@ -1,0 +1,23 @@
+.nav {
+  margin-bottom: var(--space-3);
+  font-size: var(--font-size-sm);
+}
+
+.list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.item {
+  overflow-wrap: anywhere;
+  color: var(--color-text-muted);
+}
+
+.item + .item::before {
+  content: "›";
+  margin-right: var(--space-2);
+}

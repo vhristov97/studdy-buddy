@@ -4,12 +4,16 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@fastify/multipart": "10.1.6",
     "@fastify/static": "10.1.8",
+    "@mixmark-io/domino": "2.2.0",
     "@mozaik-ai/core": "4.1.0",
     "@studdy/shared": "*",
     "better-sqlite3": "13.0.3",
     "drizzle-orm": "0.45.4",
     "fastify": "5.12.7",
+    "pdfjs-dist": "6.4.299",
+    "turndown": "7.2.4",
     "zod": "4.6.7"
   },
   "scripts": {
@@ -17,12 +21,15 @@
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "smoke:agent": "tsx scripts/smoke-agent.ts",
+    "extract": "tsx scripts/extract.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts"
   },
   "devDependencies": {
     "@types/better-sqlite3": "9.6.0",
+    "@types/turndown": "5.0.6",
     "drizzle-kit": "0.31.11",
+    "pdf-lib": "1.17.1",
     "tsx": "4.23.15"
   }
 }

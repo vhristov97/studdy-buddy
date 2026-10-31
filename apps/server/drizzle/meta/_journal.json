@@ -8,6 +8,20 @@
       "when": 1793401482910,
       "tag": "0000_sour_lady_ursula",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1793406149203,
+      "tag": "0001_loving_white_tiger",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793406383194,
+      "tag": "0002_furry_rachel_grey",
+      "breakpoints": true
     }
   ]
 }

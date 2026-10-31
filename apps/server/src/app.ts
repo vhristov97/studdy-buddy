@@ -5,7 +5,10 @@ import Fastify, { type FastifyInstance } from "fastify";
 import type { Config } from "./config.js";
 import type { Db } from "./db/client.js";
 import { REPO_ROOT } from "./paths.js";
+import { courseRoutes } from "./routes/courses.js";
+import { errorBody, registerErrorHandler } from "./routes/errors.js";
 import { healthRoutes } from "./routes/health.js";
+import { materialRoutes } from "./routes/materials.js";
 
 export interface AppDeps {
   config: Config;
@@ -25,27 +28,35 @@ export function buildApp({
     logger: process.env.VITEST ? false : true,
   });
   app.decorate("config", config);
+  registerErrorHandler(app);
   app.register(healthRoutes, { db });
+  app.register(courseRoutes, { db, dataDir: config.DATA_DIR });
+  app.register(materialRoutes, { db, dataDir: config.DATA_DIR });
 
   const webRoot = path.resolve(webDistDir);
-  if (fs.existsSync(path.join(webRoot, "index.html"))) {
-    app.register(fastifyStatic, { root: webRoot });
-    app.setNotFoundHandler((request, reply) => {
-      const pathname = request.url.split("?")[0] ?? "";
-      const isApi = pathname === "/api" || pathname.startsWith("/api/");
-      // Only navigation requests (no file extension in the last segment) get the SPA shell;
-      // missing assets such as /assets/index-oldhash.js must stay 404s.
-      const isNavigation = !path.extname(pathname);
-      if ((request.method === "GET" || request.method === "HEAD") && !isApi && isNavigation) {
-        return reply.type("text/html; charset=utf-8").sendFile("index.html");
-      }
-      return reply.code(404).send({
-        message: `Route ${request.method}:${request.url} not found`,
-        error: "Not Found",
-        statusCode: 404,
-      });
+  const hasWebDist = fs.existsSync(path.join(webRoot, "index.html"));
+  if (hasWebDist) app.register(fastifyStatic, { root: webRoot });
+
+  app.setNotFoundHandler((request, reply) => {
+    const pathname = request.url.split("?")[0] ?? "";
+    const isApi = pathname === "/api" || pathname.startsWith("/api/");
+    if (isApi) {
+      return reply
+        .code(404)
+        .send(errorBody("not_found", `Route ${request.method}:${request.url} not found`));
+    }
+    // Only navigation requests (no file extension in the last segment) get the SPA shell;
+    // missing assets such as /assets/index-oldhash.js must stay 404s.
+    const isNavigation = !path.extname(pathname);
+    if (hasWebDist && (request.method === "GET" || request.method === "HEAD") && isNavigation) {
+      return reply.type("text/html; charset=utf-8").sendFile("index.html");
+    }
+    return reply.code(404).send({
+      message: `Route ${request.method}:${request.url} not found`,
+      error: "Not Found",
+      statusCode: 404,
     });
-  }
+  });
 
   return app;
 }
